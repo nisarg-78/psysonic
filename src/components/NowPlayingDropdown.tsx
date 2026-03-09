@@ -1,0 +1,132 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { PlayCircle, User, Radio, RefreshCw } from 'lucide-react';
+import { getNowPlaying, SubsonicNowPlaying, buildCoverArtUrl } from '../api/subsonic';
+
+export default function NowPlayingDropdown() {
+  const [isOpen, setIsOpen] = useState(false);
+  const [nowPlaying, setNowPlaying] = useState<SubsonicNowPlaying[]>([]);
+  const [loading, setLoading] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const fetchNowPlaying = async () => {
+    setLoading(true);
+    try {
+      const data = await getNowPlaying();
+      setNowPlaying(data);
+    } catch (e) {
+      console.error('Failed to load Now Playing', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fetch when the dropdown is opened
+  useEffect(() => {
+    if (isOpen) {
+      fetchNowPlaying();
+    }
+  }, [isOpen]);
+
+  // Click outside to close
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="now-playing-dropdown" ref={dropdownRef} style={{ position: 'relative' }}>
+      <button 
+        className="btn btn-surface" 
+        onClick={() => setIsOpen(!isOpen)}
+        data-tooltip="Wer hört was?"
+        data-tooltip-pos="bottom"
+        style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 1rem' }}
+      >
+        <Radio size={18} className={nowPlaying.length > 0 ? 'animate-pulse' : ''} style={{ color: nowPlaying.length > 0 ? 'var(--accent)' : 'inherit' }} />
+        <span>Live</span>
+        {nowPlaying.length > 0 && (
+          <span style={{ 
+            background: 'var(--accent)', 
+            color: 'var(--ctp-crust)', 
+            fontSize: '10px', 
+            fontWeight: 'bold', 
+            padding: '2px 6px', 
+            borderRadius: '10px' 
+          }}>
+            {nowPlaying.length}
+          </span>
+        )}
+      </button>
+
+      {isOpen && (
+        <div 
+          className="glass animate-fade-in"
+          style={{
+            position: 'absolute',
+            top: 'calc(100% + 10px)',
+            right: 0,
+            width: '340px',
+            maxHeight: '400px',
+            overflowY: 'auto',
+            borderRadius: '12px',
+            boxShadow: 'var(--shadow-lg)',
+            padding: '1rem',
+            zIndex: 1000,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '1rem'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '0.5rem' }}>
+            <h3 style={{ margin: 0, fontSize: '14px', fontWeight: 600 }}>Wer hört was?</h3>
+            <button 
+              onClick={fetchNowPlaying} 
+              className={`btn btn-ghost ${loading ? 'animate-spin' : ''}`}
+              style={{ width: '28px', height: '28px', padding: 0 }}
+            >
+              <RefreshCw size={14} />
+            </button>
+          </div>
+
+          {loading && nowPlaying.length === 0 ? (
+            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              Lädt...
+            </div>
+          ) : nowPlaying.length === 0 ? (
+            <div style={{ padding: '1rem', textAlign: 'center', color: 'var(--text-muted)', fontSize: '13px' }}>
+              Gerade hört niemand Musik.
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              {nowPlaying.map((stream, idx) => (
+                <div key={`${stream.id}-${idx}`} style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', background: 'var(--bg-hover)', padding: '0.5rem', borderRadius: '8px' }}>
+                  <div style={{ width: '48px', height: '48px', flexShrink: 0, borderRadius: '6px', overflow: 'hidden', background: 'var(--bg-surface)' }}>
+                    {stream.coverArt ? (
+                      <img src={buildCoverArtUrl(stream.coverArt, 100)} alt="Cover" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <PlayCircle size={24} style={{ margin: '12px', color: 'var(--text-muted)' }} />
+                    )}
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                    <div className="truncate" style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{stream.title}</div>
+                    <div className="truncate" style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>{stream.artist}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '2px', fontSize: '11px', color: 'var(--text-muted)' }}>
+                      <User size={10} />
+                      <span className="truncate">{stream.username} ({stream.playerName || 'Web'})</span>
+                      {stream.minutesAgo > 0 && <span>• vor {stream.minutesAgo}m</span>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

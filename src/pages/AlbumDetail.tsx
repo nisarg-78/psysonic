@@ -1,0 +1,426 @@
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { Play, Star, ExternalLink, X, ChevronLeft, Download, ListPlus } from 'lucide-react';
+import { getAlbum, getArtist, getArtistInfo, setRating, buildCoverArtUrl, buildDownloadUrl, star, unstar, SubsonicSong, SubsonicAlbum } from '../api/subsonic';
+import { usePlayerStore } from '../store/playerStore';
+import { useAuthStore } from '../store/authStore';
+import { useNavigate } from 'react-router-dom';
+import { open } from '@tauri-apps/plugin-shell';
+import { writeFile } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
+import AlbumCard from '../components/AlbumCard';
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+function formatSize(bytes?: number): string {
+  if (!bytes) return '';
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function codecLabel(song: { suffix?: string; bitRate?: number; samplingRate?: number }): string {
+  const parts: string[] = [];
+  if (song.suffix) parts.push(song.suffix.toUpperCase());
+  if (song.bitRate) parts.push(`${song.bitRate} kbps`);
+  if (song.samplingRate) parts.push(`${(song.samplingRate / 1000).toFixed(1)} kHz`);
+  return parts.join(' · ');
+}
+
+function StarRating({ value, onChange }: { value: number; onChange: (r: number) => void }) {
+  const [hover, setHover] = useState(0);
+  return (
+    <div className="star-rating" role="radiogroup" aria-label="Bewertung">
+      {[1,2,3,4,5].map(n => (
+        <button
+          key={n}
+          className={`star ${(hover || value) >= n ? 'filled' : ''}`}
+          onMouseEnter={() => setHover(n)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => onChange(n)}
+          aria-label={`${n} Stern${n !== 1 ? 'e' : ''}`}
+          role="radio"
+          aria-checked={(hover || value) >= n}
+        >
+          ★
+        </button>
+      ))}
+    </div>
+  );
+}
+
+interface BioModalProps { bio: string; onClose: () => void; }
+function BioModal({ bio, onClose }: BioModalProps) {
+  return (
+    <div className="modal-overlay" onClick={onClose} role="dialog" aria-modal="true" aria-label="Künstler-Biografie">
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Schließen"><X size={18} /></button>
+        <h3 style={{ marginBottom: '1rem', fontFamily: 'var(--font-display)' }}>Künstler-Biografie</h3>
+        <div className="artist-bio" dangerouslySetInnerHTML={{ __html: bio }} data-selectable />
+      </div>
+    </div>
+  );
+}
+
+export default function AlbumDetail() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const auth = useAuthStore();
+  const playTrack = usePlayerStore(s => s.playTrack);
+  const enqueue = usePlayerStore(s => s.enqueue);
+  const openContextMenu = usePlayerStore(s => s.openContextMenu);
+  const [album, setAlbum] = useState<Awaited<ReturnType<typeof getAlbum>> | null>(null);
+  const [relatedAlbums, setRelatedAlbums] = useState<SubsonicAlbum[]>([]);
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [bio, setBio] = useState<string | null>(null);
+  const [bioOpen, setBioOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [isStarred, setIsStarred] = useState(false);
+  const [starredSongs, setStarredSongs] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    setRelatedAlbums([]);
+    getAlbum(id).then(async data => { 
+      setAlbum(data); 
+      setIsStarred(!!data.album.starred);
+      
+      const initialStarred = new Set<string>();
+      data.songs.forEach(s => { if (s.starred) initialStarred.add(s.id); });
+      setStarredSongs(initialStarred);
+      
+      setLoading(false); 
+      // Fetch related albums by the same artist
+      try {
+        const artistData = await getArtist(data.album.artistId);
+        // Filter out the current album from the related list
+        setRelatedAlbums(artistData.albums.filter(a => a.id !== id));
+      } catch (e) {
+        console.error('Failed to fetch related albums', e);
+      }
+    }).catch(() => setLoading(false));
+  }, [id]);
+
+  const handlePlayAll = () => {
+    if (!album) return;
+    const tracks = album.songs.map(s => ({
+      id: s.id, title: s.title, artist: s.artist, album: s.album,
+      albumId: s.albumId, duration: s.duration, coverArt: s.coverArt, track: s.track,
+      year: s.year, bitRate: s.bitRate, suffix: s.suffix, userRating: s.userRating,
+    }));
+    if (tracks[0]) playTrack(tracks[0], tracks);
+  };
+
+  const handleEnqueueAll = () => {
+    if (!album) return;
+    const tracks = album.songs.map(s => ({
+      id: s.id, title: s.title, artist: s.artist, album: s.album,
+      albumId: s.albumId, duration: s.duration, coverArt: s.coverArt, track: s.track,
+      year: s.year, bitRate: s.bitRate, suffix: s.suffix, userRating: s.userRating,
+    }));
+    enqueue(tracks);
+  };
+
+  const handlePlaySong = (song: SubsonicSong) => {
+    const track = {
+      id: song.id, title: song.title, artist: song.artist, album: song.album, 
+      albumId: song.albumId, duration: song.duration, coverArt: song.coverArt, 
+      track: song.track, year: song.year, bitRate: song.bitRate, 
+      suffix: song.suffix, userRating: song.userRating 
+    };
+    playTrack(track, [track]);
+  };
+
+  const handleRate = async (songId: string, rating: number) => {
+    setRatings(r => ({ ...r, [songId]: rating }));
+    await setRating(songId, rating);
+  };
+
+  const handleBio = async () => {
+    if (!album) return;
+    if (bio) { setBioOpen(true); return; }
+    const info = await getArtistInfo(album.album.artistId);
+    setBio(info.biography ?? 'Keine Biografie verfügbar.');
+    setBioOpen(true);
+  };
+
+  const handleDownload = async (albumName: string, albumId: string) => {
+    setDownloading(true);
+    try {
+      const url = buildDownloadUrl(albumId);
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      
+      if (auth.downloadFolder) {
+        const buffer = await blob.arrayBuffer();
+        const path = await join(auth.downloadFolder, `${albumName}.zip`);
+        await writeFile(path, new Uint8Array(buffer));
+        console.log(`Saved to ${path}`);
+      } else {
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `${albumName}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      }
+    } catch (e) {
+      console.error('Download fehlgeschlagen:', e);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const toggleStar = async () => {
+    if (!album) return;
+    const currentlyStarred = isStarred;
+    setIsStarred(!currentlyStarred); // Optimistic UI update
+    try {
+      if (currentlyStarred) {
+        await unstar(album.album.id);
+      } else {
+        await star(album.album.id);
+      }
+    } catch (e) {
+      console.error('Failed to toggle star', e);
+      setIsStarred(currentlyStarred); // Revert on failure
+    }
+  };
+
+  const toggleSongStar = async (song: SubsonicSong, e: React.MouseEvent) => {
+    e.stopPropagation(); // prevent play on double click trigger
+    const currentlyStarred = starredSongs.has(song.id);
+    
+    // Optimistic UI
+    const nextStarred = new Set(starredSongs);
+    if (currentlyStarred) nextStarred.delete(song.id);
+    else nextStarred.add(song.id);
+    setStarredSongs(nextStarred);
+
+    try {
+      if (currentlyStarred) {
+        await unstar(song.id, 'song');
+      } else {
+        await star(song.id, 'song');
+      }
+    } catch (err) {
+      console.error('Failed to toggle song star', err);
+      // Revert
+      const revert = new Set(starredSongs);
+      setStarredSongs(revert);
+    }
+  };
+
+  if (loading) return <div className="loading-center"><div className="spinner" /></div>;
+  if (!album) return <div className="empty-state">Album nicht gefunden.</div>;
+
+  const { album: info, songs } = album;
+  const coverUrl = info.coverArt ? buildCoverArtUrl(info.coverArt, 400) : '';
+  const totalDuration = songs.reduce((acc, s) => acc + s.duration, 0);
+
+  return (
+    <div className="album-detail animate-fade-in">
+      {bioOpen && bio && <BioModal bio={bio} onClose={() => setBioOpen(false)} />}
+
+      <div className="album-detail-header">
+        {coverUrl && (
+          <div
+            className="album-detail-bg"
+            style={{ backgroundImage: `url(${coverUrl})` }}
+            aria-hidden="true"
+          />
+        )}
+        <div className="album-detail-overlay" aria-hidden="true" />
+        
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          <button className="btn btn-ghost" onClick={() => navigate(-1)} style={{ marginBottom: '1rem', gap: '6px' }}>
+            <ChevronLeft size={16} /> Zurück
+          </button>
+          <div className="album-detail-hero">
+          {coverUrl ? (
+            <img className="album-detail-cover" src={coverUrl} alt={`${info.name} Cover`} />
+          ) : (
+            <div className="album-detail-cover album-cover-placeholder">♪</div>
+          )}
+          <div className="album-detail-meta">
+            <span className="badge" style={{ marginBottom: '0.5rem' }}>Album</span>
+            <h1 className="album-detail-title">{info.name}</h1>
+            <p className="album-detail-artist">
+              <button
+                className="album-detail-artist-link"
+                data-tooltip={`Zu ${info.artist} wechseln`}
+                onClick={() => navigate(`/artist/${info.artistId}`)}
+              >
+                {info.artist}
+              </button>
+            </p>
+            <div className="album-detail-info">
+              {info.year && <span>{info.year}</span>}
+              {info.genre && <span>· {info.genre}</span>}
+              <span>· {songs.length} Tracks</span>
+              <span>· {formatDuration(totalDuration)}</span>
+              {info.recordLabel && (
+                <>
+                  <span style={{ margin: '0 4px' }}>·</span>
+                  <button 
+                    className="album-detail-artist-link"
+                    data-tooltip={`Weitere Alben von ${info.recordLabel} anzeigen`}
+                    onClick={() => navigate(`/label/${encodeURIComponent(info.recordLabel!)}`)}
+                  >
+                    {info.recordLabel}
+                  </button>
+                </>
+              )}
+            </div>
+            <div className="album-detail-actions">
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" id="album-play-all-btn" onClick={handlePlayAll}>
+                  <Play size={16} fill="currentColor" /> Alle abspielen
+                </button>
+                <button 
+                  className="btn btn-surface" 
+                  onClick={handleEnqueueAll}
+                  data-tooltip="Ganzes Album zur Warteschlange hinzufügen"
+                >
+                  <ListPlus size={16} /> Einreihen
+                </button>
+              </div>
+              
+              <button 
+                className="btn btn-ghost" 
+                id="album-star-btn" 
+                onClick={toggleStar}
+                data-tooltip={isStarred ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
+                style={{ color: isStarred ? 'var(--accent)' : 'inherit', border: isStarred ? '1px solid var(--accent)' : undefined }}
+              >
+                <Star size={16} fill={isStarred ? "currentColor" : "none"} /> 
+                {isStarred ? 'Favorit' : 'Als Favorit'}
+              </button>
+
+              <button className="btn btn-ghost" id="album-bio-btn" onClick={handleBio}>
+                <ExternalLink size={16} /> Künstler-Bio
+              </button>
+              <button className="btn btn-ghost" id="album-download-btn" onClick={() => handleDownload(info.name, info.id)} disabled={downloading}>
+                <Download size={16} /> {downloading ? 'Lade…' : 'Download (ZIP)'}
+              </button>
+            </div>
+          </div>
+        </div>
+        </div>
+      </div>
+
+      <div className="tracklist">
+        <div className="tracklist-header">
+          <div style={{ textAlign: 'center' }}>#</div>
+          <div>Titel</div>
+          <div>Format</div>
+          <div style={{ textAlign: 'center' }}>Favorit</div>
+          <div>Bewertung</div>
+          <div style={{ textAlign: 'right' }}>Dauer</div>
+        </div>
+
+        {(() => {
+          // Group songs by disc number
+          const discs = new Map<number, SubsonicSong[]>();
+          songs.forEach(song => {
+            const disc = song.discNumber ?? 1;
+            if (!discs.has(disc)) discs.set(disc, []);
+            discs.get(disc)!.push(song);
+          });
+          const discNums = Array.from(discs.keys()).sort((a, b) => a - b);
+          const isMultiDisc = discNums.length > 1;
+
+          return discNums.map(discNum => (
+            <div key={discNum}>
+              {isMultiDisc && (
+                <div className="disc-header">
+                  <span className="disc-icon">💿</span>
+                  CD {discNum}
+                </div>
+              )}
+              {discs.get(discNum)!.map((song, i) => (
+                <div
+                  key={song.id}
+                  className="track-row"
+                  onDoubleClick={() => handlePlaySong(song)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    const track = {
+                      id: song.id, title: song.title, artist: song.artist, album: song.album,
+                      albumId: song.albumId, duration: song.duration, coverArt: song.coverArt, track: song.track,
+                      year: song.year, bitRate: song.bitRate, suffix: song.suffix, userRating: song.userRating,
+                    };
+                    openContextMenu(e.clientX, e.clientY, track, 'album-song');
+                  }}
+                  role="row"
+                  draggable
+                  onDragStart={e => {
+                    e.dataTransfer.effectAllowed = 'copy';
+                    const track = {
+                      id: song.id, title: song.title, artist: song.artist, album: song.album,
+                      albumId: song.albumId, duration: song.duration, coverArt: song.coverArt, track: song.track,
+                      year: song.year, bitRate: song.bitRate, suffix: song.suffix, userRating: song.userRating,
+                    };
+                    e.dataTransfer.setData('application/json', JSON.stringify({
+                      type: 'song',
+                      track
+                    }));
+                  }}
+                >
+                  <div className="track-num" style={{ textAlign: 'center' }}>{song.track ?? i + 1}</div>
+                  <div className="track-info">
+                    <span className="track-title" data-tooltip={song.title}>{song.title}</span>
+                    {song.artist !== info.artist && (
+                      <span className="track-artist">{song.artist}</span>
+                    )}
+                  </div>
+                  <div className="track-meta" style={{ display: 'flex', alignItems: 'center' }}>
+                    {(song.suffix || song.bitRate) && (
+                      <span className="track-codec" style={{ marginTop: 0 }}>
+                        {codecLabel(song)}
+                        {song.size ? <span className="track-size"> · {formatSize(song.size)}</span> : null}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <button 
+                      className="btn btn-ghost"
+                      onClick={(e) => toggleSongStar(song, e)}
+                      data-tooltip={starredSongs.has(song.id) ? "Aus Favoriten entfernen" : "Zu Favoriten hinzufügen"}
+                      style={{ padding: '4px', height: 'auto', minHeight: 'unset', color: starredSongs.has(song.id) ? 'var(--accent)' : 'var(--text-muted)' }}
+                    >
+                      <Star size={14} fill={starredSongs.has(song.id) ? "currentColor" : "none"} />
+                    </button>
+                  </div>
+                  <StarRating
+                    value={ratings[song.id] ?? song.userRating ?? 0}
+                    onChange={r => handleRate(song.id, r)}
+                  />
+                  <div className="track-duration" style={{ textAlign: 'right' }}>
+                    {formatDuration(song.duration)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ));
+        })()}
+      </div>
+
+      {relatedAlbums.length > 0 && (
+        <div style={{ padding: '0 var(--space-6) var(--space-8)' }}>
+          <h2 className="section-title" style={{ marginBottom: '1rem' }}>Mehr von {info.artist}</h2>
+          <div className="album-grid-wrap">
+            {relatedAlbums.map(a => <AlbumCard key={a.id} album={a} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
