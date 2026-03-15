@@ -5,7 +5,7 @@
   
   <p>
     <a href="https://github.com/Psychotoxical/psysonic/releases/latest"><img alt="Latest Release" src="https://img.shields.io/github/v/release/Psychotoxical/psysonic?style=flat-square&color=8839ef"></a>
-    <a href="https://github.com/Psychotoxical/psysonic/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/Psychotoxical/psysonic?style=flat-square&color=cba6f7"></a>
+    <a href="https://github.com/Psychotoxical/psysonic/blob/main/LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPLv3-cba6f7?style=flat-square"></a>
     <a href="https://tauri.app/"><img alt="Built with Tauri" src="https://img.shields.io/badge/Built%20with-Tauri-242938?style=flat-square&logo=tauri"></a>
   </p>
 </div>
@@ -94,4 +94,6 @@ Contributions are completely welcome! Whether it is translating the app into a n
 
 ## 📄 License
 
-Distributed under the MIT License. See `LICENSE` for more information.
+Distributed under the **GNU General Public License v3.0**. See `LICENSE` for more information.
+
+This means: you are free to use, study, and modify Psysonic. If you distribute a modified version, you must release it under the same GPL v3 license and keep the original copyright notice intact. You may **not** incorporate this code into proprietary software.
