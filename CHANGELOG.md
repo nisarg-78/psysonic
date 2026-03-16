@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.2] - 2026-03-16
+
+### Fixed
+
+#### Linux AppImage — Modern Distro Compatibility
+- **Build upgraded to Ubuntu 24.04**: The AppImage was previously built on Ubuntu 22.04 with WebKitGTK 2.36. On modern distros (CachyOS, Arch, etc.) with Mesa 25.x, `eglGetDisplay(EGL_DEFAULT_DISPLAY)` returns `EGL_BAD_PARAMETER` and aborts immediately because newer Mesa no longer accepts implicit platform detection. Building on Ubuntu 24.04 bundles WebKitGTK 2.44 which uses the correct `eglGetPlatformDisplay` API.
+- **`EGL_PLATFORM=x11` added to AppRun**: Additional safeguard that explicitly tells Mesa's EGL loader to use the X11 platform when the app is running under XWayland.
+
+#### Shell — Update Link
+- `shell:allow-open` capability now includes a URL scope (`https://**`), fixing the update toast link that silently did nothing in Tauri v2 without an explicit allow-list.
+
 ## [1.4.1] - 2026-03-16
 
 ### Fixed
