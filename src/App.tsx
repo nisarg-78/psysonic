@@ -29,6 +29,7 @@ import SearchResults from './pages/SearchResults';
 import NowPlayingPage from './pages/NowPlaying';
 import FullscreenPlayer from './components/FullscreenPlayer';
 import ContextMenu from './components/ContextMenu';
+import DownloadFolderModal from './components/DownloadFolderModal';
 import ConnectionIndicator from './components/ConnectionIndicator';
 import OfflineOverlay from './components/OfflineOverlay';
 import { useConnectionStatus } from './hooks/useConnectionStatus';
@@ -189,6 +190,7 @@ function AppShell() {
         <FullscreenPlayer onClose={toggleFullscreen} />
       )}
       <ContextMenu />
+      <DownloadFolderModal />
     </div>
   );
 }

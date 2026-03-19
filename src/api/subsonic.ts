@@ -76,6 +76,13 @@ export interface SubsonicSong {
   starred?: string;
   genre?: string;
   path?: string;
+  albumArtist?: string;
+  replayGain?: {
+    trackGain?: number;
+    albumGain?: number;
+    trackPeak?: number;
+    albumPeak?: number;
+  };
 }
 
 export interface SubsonicPlaylist {

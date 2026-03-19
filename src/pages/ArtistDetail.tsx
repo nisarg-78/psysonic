@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicArtistInfo, buildCoverArtUrl, coverArtCacheKey, star, unstar } from '../api/subsonic';
+import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, search, SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicArtistInfo, buildCoverArtUrl, coverArtCacheKey, star, unstar } from '../api/subsonic';
 import AlbumCard from '../components/AlbumCard';
 import CachedImage from '../components/CachedImage';
 import { ArrowLeft, Users, ExternalLink, Star, Play, Shuffle, Radio } from 'lucide-react';
@@ -45,6 +45,7 @@ export default function ArtistDetail() {
   const navigate = useNavigate();
   const [artist, setArtist] = useState<SubsonicArtist | null>(null);
   const [albums, setAlbums] = useState<SubsonicAlbum[]>([]);
+  const [featuredAlbums, setFeaturedAlbums] = useState<SubsonicAlbum[]>([]);
   const [topSongs, setTopSongs] = useState<SubsonicSong[]>([]);
   const [info, setInfo] = useState<SubsonicArtistInfo | null>(null);
   const [loading, setLoading] = useState(true);
@@ -60,17 +61,45 @@ export default function ArtistDetail() {
   useEffect(() => {
     if (!id) return;
     setLoading(true);
+    let ownAlbumIds: Set<string>;
     getArtist(id).then(artistData => {
       setArtist(artistData.artist);
       setAlbums(artistData.albums);
       setIsStarred(!!artistData.artist.starred);
+      ownAlbumIds = new Set(artistData.albums.map(a => a.id));
       return Promise.all([
         getArtistInfo(id).catch(() => null),
-        getTopSongs(artistData.artist.name).catch(() => [])
+        getTopSongs(artistData.artist.name).catch(() => []),
+        search(artistData.artist.name, { songCount: 500, artistCount: 0, albumCount: 0 }).catch(() => ({ songs: [], albums: [], artists: [] })),
       ]);
-    }).then(([artistInfo, songsData]) => {
+    }).then(([artistInfo, songsData, searchResults]) => {
       if (artistInfo !== undefined) setInfo(artistInfo as SubsonicArtistInfo | null);
       if (songsData !== undefined) setTopSongs(songsData as SubsonicSong[]);
+
+      const featuredSongs = (searchResults.songs ?? []).filter(
+        song => song.artistId === id && !ownAlbumIds.has(song.albumId)
+      );
+      const albumMap = new Map<string, SubsonicAlbum>();
+      featuredSongs.forEach(song => {
+        if (!albumMap.has(song.albumId)) {
+          albumMap.set(song.albumId, {
+            id: song.albumId,
+            name: song.album,
+            artist: song.albumArtist ?? '',
+            artistId: '',
+            coverArt: song.coverArt,
+            songCount: 1,
+            duration: song.duration,
+            year: song.year,
+          });
+        } else {
+          const a = albumMap.get(song.albumId)!;
+          a.songCount++;
+          a.duration += song.duration;
+        }
+      });
+      setFeaturedAlbums([...albumMap.values()]);
+
       setLoading(false);
     }).catch(err => {
       console.error(err);
@@ -307,6 +336,18 @@ export default function ArtistDetail() {
         </div>
       ) : (
         <p style={{ color: 'var(--text-muted)' }}>{t('artistDetail.noAlbums')}</p>
+      )}
+
+      {/* Also Featured On */}
+      {featuredAlbums.length > 0 && (
+        <>
+          <h2 className="section-title" style={{ marginTop: '2rem', marginBottom: '1rem' }}>
+            {t('artistDetail.featuredOn')}
+          </h2>
+          <div className="album-grid-wrap">
+            {featuredAlbums.map(a => <AlbumCard key={a.id} album={a} />)}
+          </div>
+        </>
       )}
     </div>
   );

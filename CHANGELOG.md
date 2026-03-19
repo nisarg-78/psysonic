@@ -5,6 +5,59 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-03-19
+
+### Added
+
+#### Replay Gain
+- **Replay Gain support** in the Rust audio engine. Gain and peak values from the Subsonic API are applied per-track at playback time, keeping loudness consistent across your library.
+- Two modes selectable in Settings → Playback: **Track** (default) and **Album** gain.
+- Peak limiting applied to prevent clipping: effective gain is capped at `1 / peak`.
+- Volume slider preserves the gain ratio — `audio_set_volume` multiplies `base_volume × replay_gain_linear`.
+
+#### Crossfade
+- **Crossfade between tracks** (0.5 – 12 s, configurable in Settings → Playback).
+- Old sink is volume-ramped to zero in 30 steps while the new track starts playing; old sink stored in `fading_out_sink` so a subsequent skip cancels the fade-out immediately.
+- `audio_set_crossfade` Tauri command; synced to Rust on startup and on toggle.
+
+#### Gapless Preloading *(Experimental — Alpha)*
+- **Gapless playback**: when ≤ 30 s remain in the current track, the next track's audio is preloaded via `audio_preload` in the background.
+- `audio_play` checks the preload cache first — if there is a URL match the download is skipped entirely, eliminating the gap between tracks.
+- The old Sink is kept alive during the new track's download and decode phase; the Sink swap happens atomically after decoding is complete, fixing a subtle **start-of-track audio cut** that occurred regardless of gapless state.
+- ⚠️ **This feature is experimental and still in active development.** It may not work correctly in all scenarios. Enable it in Settings → Playback at your own discretion.
+
+#### Settings — Tab Navigation
+- Settings reorganised into **5 horizontal tabs**: Playback, Library, Appearance, Server, About.
+- Each tab groups related settings with a matching icon.
+
+#### Artist Pages — "Also Featured On"
+- Artist detail pages now show an **"Also Featured On"** section listing albums where the artist appears as a guest or featured performer (but is not the primary album artist).
+- Implemented via `search3` filtered by `song.artistId`, excluding the artist's own albums.
+
+#### Download Folder Modal
+- When no download folder is configured and the user initiates a download (album or track), a **folder picker modal** now appears asking where to save.
+- Includes a "Remember this folder" checkbox that writes the choice to Settings.
+- Clear button added in Settings → Server to reset the saved download folder.
+
+#### Changelog in Settings
+- The full **Changelog** is now readable inside the app under Settings → About.
+- Rendered as collapsible version entries; the current version is expanded by default.
+- Inline Markdown (`**bold**`, `*italic*`, `` `code` ``) is rendered natively.
+
+#### EQ as Player Bar Popup
+- The Equalizer is now accessible directly from the **player bar** via a small EQ button, opening as a centred popup overlay — no need to navigate to Settings.
+
+### Fixed
+
+- **Bundle identifier warning**: changed `identifier` from `dev.psysonic.app` to `dev.psysonic.player` to avoid the macOS `.app` extension conflict warned by Tauri.
+- **Version mismatch in releases**: `tauri.conf.json` version was out of sync with `package.json` and `Cargo.toml`, causing GitHub Actions to build release artefacts with the wrong version number. All four version sources (`package.json`, `Cargo.toml`, `tauri.conf.json`, `packages/aur/PKGBUILD`) are now kept in sync.
+
+### Known Issues
+
+- **FLAC seeking**: jumping to a position in a FLAC file via the waveform seekbar currently does not work. Seeking in MP3, OGG, and other formats is unaffected.
+
+---
+
 ## [1.5.0] - 2026-03-18
 
 ### Added

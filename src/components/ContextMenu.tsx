@@ -4,6 +4,7 @@ import { usePlayerStore, Track } from '../store/playerStore';
 import { SubsonicAlbum, SubsonicArtist, star, unstar, getSimilarSongs2, getTopSongs, buildDownloadUrl, getAlbum } from '../api/subsonic';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { useDownloadModalStore } from '../store/downloadModalStore';
 import { open } from '@tauri-apps/plugin-shell';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
@@ -21,6 +22,7 @@ export default function ContextMenu() {
   const { t } = useTranslation();
   const { contextMenu, closeContextMenu, playTrack, enqueue, queue, currentTrack, removeTrack } = usePlayerStore();
   const auth = useAuthStore();
+  const requestDownloadFolder = useDownloadModalStore(s => s.requestFolder);
   const navigate = useNavigate();
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -74,25 +76,16 @@ export default function ContextMenu() {
 
   const downloadAlbum = async (albumName: string, albumId: string) => {
     try {
+      const folder = auth.downloadFolder || await requestDownloadFolder();
+      if (!folder) return;
+
       const url = buildDownloadUrl(albumId);
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const blob = await response.blob();
-
-      if (auth.downloadFolder) {
-        const buffer = await blob.arrayBuffer();
-        const path = await join(auth.downloadFolder, `${sanitizeFilename(albumName)}.zip`);
-        await writeFile(path, new Uint8Array(buffer));
-      } else {
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = `${sanitizeFilename(albumName)}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-      }
+      const buffer = await blob.arrayBuffer();
+      const path = await join(folder, `${sanitizeFilename(albumName)}.zip`);
+      await writeFile(path, new Uint8Array(buffer));
     } catch (e) {
       console.error('Download failed:', e);
     }

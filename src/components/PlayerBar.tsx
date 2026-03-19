@@ -1,12 +1,13 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music,
-  Square, Repeat, Repeat1, Maximize2
+  Square, Repeat, Repeat1, Maximize2, SlidersHorizontal, X
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { buildCoverArtUrl, coverArtCacheKey } from '../api/subsonic';
 import CachedImage from './CachedImage';
 import WaveformSeek from './WaveformSeek';
+import Equalizer from './Equalizer';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 
@@ -20,6 +21,7 @@ function formatTime(seconds: number): string {
 export default function PlayerBar() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const [eqOpen, setEqOpen] = useState(false);
   const {
     currentTrack, isPlaying, currentTime, volume,
     togglePlay, next, previous, setVolume,
@@ -125,6 +127,16 @@ export default function PlayerBar() {
         <span className="player-time">{formatTime(duration)}</span>
       </div>
 
+      {/* EQ Button */}
+      <button
+        className={`player-btn player-btn-sm player-eq-btn ${eqOpen ? 'active' : ''}`}
+        onClick={() => setEqOpen(v => !v)}
+        aria-label="Equalizer"
+        data-tooltip="Equalizer"
+      >
+        <SlidersHorizontal size={15} />
+      </button>
+
       {/* Volume */}
       <div className="player-volume-section">
         <button
@@ -148,6 +160,22 @@ export default function PlayerBar() {
           className="player-volume-slider"
         />
       </div>
+
+      {/* EQ Popup */}
+      {eqOpen && (
+        <>
+          <div className="eq-popup-backdrop" onClick={() => setEqOpen(false)} />
+          <div className="eq-popup">
+            <div className="eq-popup-header">
+              <span className="eq-popup-title">Equalizer</span>
+              <button className="eq-popup-close" onClick={() => setEqOpen(false)} aria-label="Close">
+                <X size={16} />
+              </button>
+            </div>
+            <Equalizer />
+          </div>
+        </>
+      )}
 
     </footer>
   );

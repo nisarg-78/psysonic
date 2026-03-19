@@ -27,6 +27,11 @@ interface AuthState {
   downloadFolder: string;
   excludeAudiobooks: boolean;
   customGenreBlacklist: string[];
+  replayGainEnabled: boolean;
+  replayGainMode: 'track' | 'album';
+  crossfadeEnabled: boolean;
+  crossfadeSecs: number;
+  gaplessEnabled: boolean;
 
   // Status
   isLoggedIn: boolean;
@@ -48,6 +53,11 @@ interface AuthState {
   setDownloadFolder: (v: string) => void;
   setExcludeAudiobooks: (v: boolean) => void;
   setCustomGenreBlacklist: (v: string[]) => void;
+  setReplayGainEnabled: (v: boolean) => void;
+  setReplayGainMode: (v: 'track' | 'album') => void;
+  setCrossfadeEnabled: (v: boolean) => void;
+  setCrossfadeSecs: (v: number) => void;
+  setGaplessEnabled: (v: boolean) => void;
   logout: () => void;
 
   // Derived
@@ -74,6 +84,11 @@ export const useAuthStore = create<AuthState>()(
       downloadFolder: '',
       excludeAudiobooks: false,
       customGenreBlacklist: [],
+      replayGainEnabled: false,
+      replayGainMode: 'track',
+      crossfadeEnabled: false,
+      crossfadeSecs: 3,
+      gaplessEnabled: false,
       isLoggedIn: false,
       isConnecting: false,
       connectionError: null,
@@ -117,6 +132,11 @@ export const useAuthStore = create<AuthState>()(
       setDownloadFolder: (v) => set({ downloadFolder: v }),
       setExcludeAudiobooks: (v) => set({ excludeAudiobooks: v }),
       setCustomGenreBlacklist: (v) => set({ customGenreBlacklist: v }),
+      setReplayGainEnabled: (v) => set({ replayGainEnabled: v }),
+      setReplayGainMode: (v) => set({ replayGainMode: v }),
+      setCrossfadeEnabled: (v) => set({ crossfadeEnabled: v }),
+      setCrossfadeSecs: (v) => set({ crossfadeSecs: v }),
+      setGaplessEnabled: (v) => set({ gaplessEnabled: v }),
 
       logout: () => set({ isLoggedIn: false }),
 

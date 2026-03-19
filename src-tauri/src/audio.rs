@@ -137,6 +137,12 @@ impl<S: Source<Item = f32>> Source for EqSource<S> {
 
 // ─── Engine state (registered as Tauri managed state) ────────────────────────
 
+pub(crate) struct PreloadedTrack {
+    url: String,
+    data: Vec<u8>,
+    duration_hint: f64,
+}
+
 pub struct AudioEngine {
     pub stream_handle: Arc<rodio::OutputStreamHandle>,
     pub current: Arc<Mutex<AudioCurrent>>,
@@ -147,6 +153,10 @@ pub struct AudioEngine {
     pub http_client: reqwest::Client,
     pub eq_gains: Arc<[AtomicU32; 10]>,
     pub eq_enabled: Arc<AtomicBool>,
+    pub preloaded: Arc<Mutex<Option<PreloadedTrack>>>,
+    pub crossfade_enabled: Arc<AtomicBool>,
+    pub crossfade_secs: Arc<AtomicU32>,  // f32 stored as bits
+    pub fading_out_sink: Arc<Mutex<Option<Sink>>>,
 }
 
 pub struct AudioCurrent {
@@ -159,6 +169,8 @@ pub struct AudioCurrent {
     pub play_started: Option<Instant>,
     /// Set when paused; holds the position at pause time.
     pub paused_at: Option<f64>,
+    pub replay_gain_linear: f32,
+    pub base_volume: f32,
 }
 
 impl AudioCurrent {
@@ -207,6 +219,8 @@ pub fn create_engine() -> (AudioEngine, std::thread::JoinHandle<()>) {
             seek_offset: 0.0,
             play_started: None,
             paused_at: None,
+            replay_gain_linear: 1.0,
+            base_volume: 0.8,
         })),
         generation: Arc::new(AtomicU64::new(0)),
         http_client: reqwest::Client::builder()
@@ -215,6 +229,10 @@ pub fn create_engine() -> (AudioEngine, std::thread::JoinHandle<()>) {
             .unwrap_or_default(),
         eq_gains: Arc::new(std::array::from_fn(|_| AtomicU32::new(0f32.to_bits()))),
         eq_enabled: Arc::new(AtomicBool::new(false)),
+        preloaded: Arc::new(Mutex::new(None)),
+        crossfade_enabled: Arc::new(AtomicBool::new(false)),
+        crossfade_secs: Arc::new(AtomicU32::new(3.0f32.to_bits())),
+        fading_out_sink: Arc::new(Mutex::new(None)),
     };
 
     (engine, thread)
@@ -238,43 +256,61 @@ pub async fn audio_play(
     url: String,
     volume: f32,
     duration_hint: f64,
+    replay_gain_db: Option<f32>,
+    replay_gain_peak: Option<f32>,
     app: AppHandle,
     state: State<'_, AudioEngine>,
 ) -> Result<(), String> {
     // Claim this generation — any in-flight progress task with the old gen will exit.
     let gen = state.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
-    // Stop existing playback immediately.
+    // Stop any previous fading sink unconditionally.
     {
-        let mut cur = state.current.lock().unwrap();
-        if let Some(sink) = cur.sink.take() {
-            sink.stop();
+        let mut fo = state.fading_out_sink.lock().unwrap();
+        if let Some(old) = fo.take() {
+            old.stop();
         }
-        cur.seek_offset = 0.0;
-        cur.play_started = None;
-        cur.paused_at = None;
-        cur.duration_secs = duration_hint;
     }
 
-    // ── Download ──────────────────────────────────────────────────────────────
-    let response = state
-        .http_client
-        .get(&url)
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
+    // NOTE: We intentionally do NOT stop the current Sink here.
+    // The old Sink keeps playing while we download + decode the new track.
+    // We swap Sinks atomically only after the new data is ready, so the
+    // old track plays to completion (or as close to it as possible).
 
-    if !response.status().is_success() {
-        let status = response.status().as_u16();
-        if state.generation.load(Ordering::SeqCst) != gen {
-            return Ok(());
+    // ── Check preload cache or download ──────────────────────────────────────
+    let data: Vec<u8> = {
+        let cached = {
+            let mut preloaded = state.preloaded.lock().unwrap();
+            if let Some(p) = preloaded.as_ref().filter(|p| p.url == url) {
+                let d = p.data.clone();
+                let _ = p.duration_hint; // used for type check
+                *preloaded = None;
+                Some(d)
+            } else {
+                None
+            }
+        };
+        if let Some(cached_data) = cached {
+            cached_data
+        } else {
+            let response = state
+                .http_client
+                .get(&url)
+                .send()
+                .await
+                .map_err(|e| e.to_string())?;
+            if !response.status().is_success() {
+                let status = response.status().as_u16();
+                if state.generation.load(Ordering::SeqCst) != gen {
+                    return Ok(());
+                }
+                let msg = format!("HTTP {status}");
+                app.emit("audio:error", &msg).ok();
+                return Err(msg);
+            }
+            response.bytes().await.map_err(|e| e.to_string())?.into()
         }
-        let msg = format!("HTTP {status}");
-        app.emit("audio:error", &msg).ok();
-        return Err(msg);
-    }
-
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    };
 
     // Bail if superseded while downloading.
     if state.generation.load(Ordering::SeqCst) != gen {
@@ -282,7 +318,6 @@ pub async fn audio_play(
     }
 
     // ── Decode ────────────────────────────────────────────────────────────────
-    let data: Vec<u8> = bytes.into();
 
     // Trust the Subsonic API duration_hint as the primary source.
     // Decoder::total_duration() is unreliable for VBR MP3 (symphonia may
@@ -311,9 +346,21 @@ pub async fn audio_play(
         return Ok(());
     }
 
-    // ── Create sink and start playback ────────────────────────────────────────
+    // ── Compute replay gain ───────────────────────────────────────────────────
+    let gain_linear: f32 = replay_gain_db
+        .map(|db| 10f32.powf(db / 20.0))
+        .unwrap_or(1.0);
+    let peak = replay_gain_peak.unwrap_or(1.0).max(0.001);
+    // Limit gain so peak sample doesn't exceed 1.0 (prevent clipping).
+    let gain_linear = gain_linear.min(1.0 / peak);
+    let effective_volume = (volume.clamp(0.0, 1.0) * gain_linear).clamp(0.0, 1.0);
+
+    // ── Create new sink ───────────────────────────────────────────────────────
+    let crossfade_enabled = state.crossfade_enabled.load(Ordering::Relaxed);
+    let crossfade_secs_val = f32::from_bits(state.crossfade_secs.load(Ordering::Relaxed)).clamp(0.5, 12.0);
+
     let sink = Sink::try_new(&*state.stream_handle).map_err(|e| e.to_string())?;
-    sink.set_volume(volume.clamp(0.0, 1.0));
+    sink.set_volume(effective_volume);
     let eq_source = EqSource::new(
         decoder.convert_samples::<f32>(),
         state.eq_gains.clone(),
@@ -321,13 +368,49 @@ pub async fn audio_play(
     );
     sink.append(eq_source);
 
-    {
+    // Atomically swap sinks: take old one, install new one.
+    // Capture old volume so the crossfade fade-out starts at the right level.
+    let (old_sink, old_vol) = {
         let mut cur = state.current.lock().unwrap();
+        let old_vol = (cur.base_volume * cur.replay_gain_linear).clamp(0.0, 1.0);
+        let old = cur.sink.take();
         cur.sink = Some(sink);
         cur.duration_secs = duration_secs;
         cur.seek_offset = 0.0;
         cur.play_started = Some(Instant::now());
         cur.paused_at = None;
+        cur.replay_gain_linear = gain_linear;
+        cur.base_volume = volume.clamp(0.0, 1.0);
+        (old, old_vol)
+    };
+
+    // Handle old sink: crossfade fade-out or immediate stop.
+    // The new track is already playing; the old sink runs in parallel during a crossfade.
+    if crossfade_enabled {
+        if let Some(old) = old_sink {
+            // Park the old sink in fading_out_sink so a subsequent audio_play can cancel it.
+            *state.fading_out_sink.lock().unwrap() = Some(old);
+            let fo_arc = state.fading_out_sink.clone();
+            tokio::spawn(async move {
+                let steps: u32 = 30;
+                let step_ms = ((crossfade_secs_val * 1000.0) / steps as f32) as u64;
+                for i in (0..=steps).rev() {
+                    {
+                        let fo = fo_arc.lock().unwrap();
+                        match fo.as_ref() {
+                            Some(s) => s.set_volume(old_vol * (i as f32 / steps as f32)),
+                            None => return, // cancelled by a subsequent audio_play
+                        }
+                    }
+                    tokio::time::sleep(Duration::from_millis(step_ms)).await;
+                }
+                if let Some(s) = fo_arc.lock().unwrap().take() {
+                    s.stop();
+                }
+            });
+        }
+    } else if let Some(old) = old_sink {
+        old.stop();
     }
 
     app.emit("audio:playing", duration_secs).ok();
@@ -340,13 +423,14 @@ pub async fn audio_play(
     // Instead we use the wall-clock position (seek_offset + elapsed).
     // `AudioCurrent::position()` is clamped to `duration_secs`, so once it
     // reaches the end it stays there. We fire `audio:ended` after two
-    // consecutive ticks where position >= duration - 1.0 s, which:
-    //   • avoids false positives from seeking very close to the end
-    //   • fires roughly 0.5–1 s before the last sample, giving the frontend
-    //     enough time to queue the next download.
+    // consecutive ticks where position >= duration - threshold, where threshold
+    // is extended to crossfade_secs when crossfade is enabled so the frontend
+    // gets time to start the next track during the fade.
     let gen_counter = state.generation.clone();
     let current_arc = state.current.clone();
     let app_clone = app.clone();
+    let crossfade_enabled_arc = state.crossfade_enabled.clone();
+    let crossfade_secs_arc = state.crossfade_secs.clone();
 
     tokio::spawn(async move {
         let mut near_end_ticks: u32 = 0;
@@ -375,8 +459,11 @@ pub async fn audio_play(
                 continue;
             }
 
+            let cf_enabled = crossfade_enabled_arc.load(Ordering::Relaxed);
+            let cf_secs = f32::from_bits(crossfade_secs_arc.load(Ordering::Relaxed)).clamp(0.5, 12.0) as f64;
+            let end_threshold = if cf_enabled { cf_secs.max(1.0) } else { 1.0 };
 
-            if dur > 1.0 && pos >= dur - 1.0 {
+            if dur > end_threshold && pos >= dur - end_threshold {
                 near_end_ticks += 1;
                 if near_end_ticks >= 2 {
                     gen_counter.fetch_add(1, Ordering::SeqCst);
@@ -450,9 +537,10 @@ pub fn audio_seek(seconds: f64, state: State<'_, AudioEngine>) -> Result<(), Str
 
 #[tauri::command]
 pub fn audio_set_volume(volume: f32, state: State<'_, AudioEngine>) {
-    let cur = state.current.lock().unwrap();
+    let mut cur = state.current.lock().unwrap();
+    cur.base_volume = volume.clamp(0.0, 1.0);
     if let Some(sink) = &cur.sink {
-        sink.set_volume(volume.clamp(0.0, 1.0));
+        sink.set_volume((cur.base_volume * cur.replay_gain_linear).clamp(0.0, 1.0));
     }
 }
 
@@ -462,4 +550,37 @@ pub fn audio_set_eq(gains: [f32; 10], enabled: bool, state: State<'_, AudioEngin
     for (i, &gain) in gains.iter().enumerate() {
         state.eq_gains[i].store(gain.clamp(-12.0, 12.0).to_bits(), Ordering::Relaxed);
     }
+}
+
+#[tauri::command]
+pub async fn audio_preload(
+    url: String,
+    duration_hint: f64,
+    state: State<'_, AudioEngine>,
+) -> Result<(), String> {
+    // Don't re-download if already preloaded for this URL.
+    {
+        let preloaded = state.preloaded.lock().unwrap();
+        if preloaded.as_ref().map(|p| p.url == url).unwrap_or(false) {
+            return Ok(());
+        }
+    }
+    let response = state
+        .http_client
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    if !response.status().is_success() {
+        return Ok(()); // silently fail preload
+    }
+    let data: Vec<u8> = response.bytes().await.map_err(|e| e.to_string())?.into();
+    *state.preloaded.lock().unwrap() = Some(PreloadedTrack { url, data, duration_hint });
+    Ok(())
+}
+
+#[tauri::command]
+pub fn audio_set_crossfade(enabled: bool, secs: f32, state: State<'_, AudioEngine>) {
+    state.crossfade_enabled.store(enabled, Ordering::Relaxed);
+    state.crossfade_secs.store(secs.clamp(0.5, 12.0).to_bits(), Ordering::Relaxed);
 }

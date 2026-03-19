@@ -19,6 +19,30 @@ export interface Track {
   bitRate?: number;
   suffix?: string;
   userRating?: number;
+  replayGainTrackDb?: number;
+  replayGainAlbumDb?: number;
+  replayGainPeak?: number;
+}
+
+export function songToTrack(song: SubsonicSong): Track {
+  return {
+    id: song.id,
+    title: song.title,
+    artist: song.artist,
+    album: song.album,
+    albumId: song.albumId,
+    artistId: song.artistId,
+    duration: song.duration,
+    coverArt: song.coverArt,
+    track: song.track,
+    year: song.year,
+    bitRate: song.bitRate,
+    suffix: song.suffix,
+    userRating: song.userRating,
+    replayGainTrackDb: song.replayGain?.trackGain,
+    replayGainAlbumDb: song.replayGain?.albumGain,
+    replayGainPeak: song.replayGain?.trackPeak,
+  };
 }
 
 interface PlayerState {
@@ -125,6 +149,20 @@ function handleAudioProgress(current_time: number, duration: number) {
     const { scrobblingEnabled } = useAuthStore.getState();
     if (scrobblingEnabled) scrobbleSong(track.id, Date.now());
   }
+
+  // Gapless preload: buffer next track when 30s remain
+  const { gaplessEnabled } = useAuthStore.getState();
+  if (gaplessEnabled && dur - current_time < 30 && dur - current_time > 0) {
+    const { queue, queueIndex, repeatMode } = store;
+    const nextIdx = queueIndex + 1;
+    const nextTrack = repeatMode === 'one'
+      ? track
+      : (nextIdx < queue.length ? queue[nextIdx] : (repeatMode === 'all' ? queue[0] : null));
+    if (nextTrack && nextTrack.id !== track.id) {
+      const nextUrl = buildStreamUrl(nextTrack.id);
+      invoke('audio_preload', { url: nextUrl, durationHint: nextTrack.duration }).catch(() => {});
+    }
+  }
 }
 
 function handleAudioEnded() {
@@ -167,7 +205,20 @@ export function initAudioListeners(): () => void {
     listen<string>('audio:error', ({ payload }) => handleAudioError(payload)),
   ];
 
+  // Initial sync of crossfade settings to Rust audio engine on startup.
+  const { crossfadeEnabled, crossfadeSecs } = useAuthStore.getState();
+  invoke('audio_set_crossfade', { enabled: crossfadeEnabled, secs: crossfadeSecs }).catch(() => {});
+
+  // Keep crossfade settings in sync whenever auth store changes.
+  const unsubAuth = useAuthStore.subscribe((state) => {
+    invoke('audio_set_crossfade', {
+      enabled: state.crossfadeEnabled,
+      secs: state.crossfadeSecs,
+    }).catch(() => {});
+  });
+
   return () => {
+    unsubAuth();
     pending.forEach(p => p.then(unlisten => unlisten()));
   };
 }
@@ -238,10 +289,17 @@ export const usePlayerStore = create<PlayerState>()(
         });
 
         const url = buildStreamUrl(track.id);
+        const authState = useAuthStore.getState();
+        const replayGainDb = authState.replayGainEnabled
+          ? (authState.replayGainMode === 'album' ? track.replayGainAlbumDb : track.replayGainTrackDb) ?? null
+          : null;
+        const replayGainPeak = authState.replayGainEnabled ? (track.replayGainPeak ?? null) : null;
         invoke('audio_play', {
           url,
           volume: state.volume,
           durationHint: track.duration,
+          replayGainDb,
+          replayGainPeak,
         }).catch((err: unknown) => {
           if (playGeneration !== gen) return;
           console.error('[psysonic] audio_play failed:', err);
@@ -277,10 +335,17 @@ export const usePlayerStore = create<PlayerState>()(
           const gen = ++playGeneration;
           const vol = get().volume;
           set({ isPlaying: true });
+          const authStateCold = useAuthStore.getState();
+          const replayGainDbCold = authStateCold.replayGainEnabled
+            ? (authStateCold.replayGainMode === 'album' ? currentTrack.replayGainAlbumDb : currentTrack.replayGainTrackDb) ?? null
+            : null;
+          const replayGainPeakCold = authStateCold.replayGainEnabled ? (currentTrack.replayGainPeak ?? null) : null;
           invoke('audio_play', {
             url: buildStreamUrl(currentTrack.id),
             volume: vol,
             durationHint: currentTrack.duration,
+            replayGainDb: replayGainDbCold,
+            replayGainPeak: replayGainPeakCold,
           }).then(() => {
             if (playGeneration === gen && currentTime > 1) {
               invoke('audio_seek', { seconds: currentTime }).catch(console.error);

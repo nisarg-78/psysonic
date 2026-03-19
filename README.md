@@ -40,6 +40,7 @@ Designed specifically for users hosting their own music via Navidrome or other S
 ## ● Known Limitations
 
 - **Linux (drag & drop cursor feedback)**: Due to a WebKitGTK limitation, the drag cursor does not reflect the drop operation type — it may appear as a "forbidden" symbol or show no indicator at all, depending on the desktop environment. Drag and drop itself works correctly.
+- **FLAC seeking**: Jumping to a position in a FLAC file via the waveform seekbar currently does not work. Seeking in MP3, OGG, and other formats is unaffected. This is a known issue and will be investigated.
 
 ## 📥 Installation
 

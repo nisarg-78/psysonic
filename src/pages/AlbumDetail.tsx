@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { getAlbum, getArtist, getArtistInfo, setRating, buildCoverArtUrl, coverArtCacheKey, buildDownloadUrl, star, unstar, SubsonicSong, SubsonicAlbum } from '../api/subsonic';
 import { usePlayerStore } from '../store/playerStore';
 import { useAuthStore } from '../store/authStore';
+import { useDownloadModalStore } from '../store/downloadModalStore';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
 import AlbumCard from '../components/AlbumCard';
@@ -24,6 +25,7 @@ export default function AlbumDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const auth = useAuthStore();
+  const requestDownloadFolder = useDownloadModalStore(s => s.requestFolder);
   const playTrack = usePlayerStore(s => s.playTrack);
   const enqueue = usePlayerStore(s => s.enqueue);
   const openContextMenu = usePlayerStore(s => s.openContextMenu);
@@ -106,6 +108,11 @@ export default function AlbumDetail() {
   const handleDownload = async () => {
     if (!album) return;
     const { name, id: albumId } = album.album;
+
+    // Ask for folder before starting download if not already set
+    const folder = auth.downloadFolder || await requestDownloadFolder();
+    if (!folder) return;
+
     setDownloadProgress(0);
     try {
       const url = buildDownloadUrl(albumId);
@@ -133,20 +140,9 @@ export default function AlbumDetail() {
       }
 
       const blob = new Blob(chunks);
-      if (auth.downloadFolder) {
-        const buffer = await blob.arrayBuffer();
-        const path = await join(auth.downloadFolder, `${sanitizeFilename(name)}.zip`);
-        await writeFile(path, new Uint8Array(buffer));
-      } else {
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = `${sanitizeFilename(name)}.zip`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-      }
+      const buffer = await blob.arrayBuffer();
+      const path = await join(folder, `${sanitizeFilename(name)}.zip`);
+      await writeFile(path, new Uint8Array(buffer));
     } catch (e) {
       console.error('Download failed:', e);
       setDownloadProgress(null);

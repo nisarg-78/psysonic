@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Psysonic",
-  "version": "1.4.5",
-  "identifier": "dev.psysonic.app",
+  "version": "1.6.0",
+  "identifier": "dev.psysonic.player",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

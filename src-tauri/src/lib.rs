@@ -126,6 +126,8 @@ pub fn run() {
             audio::audio_seek,
             audio::audio_set_volume,
             audio::audio_set_eq,
+            audio::audio_preload,
+            audio::audio_set_crossfade,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Psysonic");

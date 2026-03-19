@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Save, Trash2, RotateCcw } from 'lucide-react';
 import { useEqStore, EQ_BANDS, BUILTIN_PRESETS } from '../store/eqStore';
+import { useThemeStore } from '../store/themeStore';
 
 // ─── Frequency response canvas ────────────────────────────────────────────────
 
@@ -11,31 +12,31 @@ const EQ_Q = 1.41;
 function biquadPeakResponse(freq: number, centerHz: number, gainDb: number, sampleRate: number): number {
   if (Math.abs(gainDb) < 0.01) return 0;
   const w0 = (2 * Math.PI * centerHz) / sampleRate;
-  const A  = Math.pow(10, gainDb / 40);
+  const A = Math.pow(10, gainDb / 40);
   const alpha = Math.sin(w0) / (2 * EQ_Q);
-  const b0 =  1 + alpha * A;
+  const b0 = 1 + alpha * A;
   const b1 = -2 * Math.cos(w0);
-  const b2 =  1 - alpha * A;
-  const a0 =  1 + alpha / A;
+  const b2 = 1 - alpha * A;
+  const a0 = 1 + alpha / A;
   const a1 = -2 * Math.cos(w0);
-  const a2 =  1 - alpha / A;
-  const w  = (2 * Math.PI * freq) / sampleRate;
+  const a2 = 1 - alpha / A;
+  const w = (2 * Math.PI * freq) / sampleRate;
   const cosW = Math.cos(w), sinW = Math.sin(w);
   const cos2W = Math.cos(2 * w), sin2W = Math.sin(2 * w);
   const numRe = b0 + b1 * cosW + b2 * cos2W;
-  const numIm =    - b1 * sinW - b2 * sin2W;
+  const numIm = - b1 * sinW - b2 * sin2W;
   const denRe = a0 + a1 * cosW + a2 * cos2W;
-  const denIm =    - a1 * sinW - a2 * sin2W;
+  const denIm = - a1 * sinW - a2 * sin2W;
   const numMag2 = numRe * numRe + numIm * numIm;
   const denMag2 = denRe * denRe + denIm * denIm;
   return 10 * Math.log10(numMag2 / denMag2);
 }
 
-function drawCurve(canvas: HTMLCanvasElement, gains: number[], accentColor: string) {
+function drawCurve(canvas: HTMLCanvasElement, gains: number[], accentColor: string, bgColor: string, textColor: string) {
   const dpr = window.devicePixelRatio || 1;
   const W = canvas.offsetWidth;
   const H = canvas.offsetHeight;
-  canvas.width  = W * dpr;
+  canvas.width = W * dpr;
   canvas.height = H * dpr;
   const ctx = canvas.getContext('2d')!;
   ctx.scale(dpr, dpr);
@@ -52,7 +53,7 @@ function drawCurve(canvas: HTMLCanvasElement, gains: number[], accentColor: stri
     padT + ((dbMax - db) / (dbMax - dbMin)) * innerH;
 
   // Background
-  ctx.fillStyle = '#0d0d12';
+  ctx.fillStyle = bgColor;
   ctx.fillRect(0, 0, W, H);
 
   // Grid: dB lines
@@ -64,7 +65,7 @@ function drawCurve(canvas: HTMLCanvasElement, gains: number[], accentColor: stri
     ctx.moveTo(padL, y);
     ctx.lineTo(W - padR, y);
     ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+    ctx.fillStyle = textColor;
     ctx.font = '9px monospace';
     ctx.textAlign = 'right';
     ctx.fillText(db === 0 ? '0' : (db > 0 ? `+${db}` : `${db}`), padL - 4, y + 3);
@@ -123,13 +124,70 @@ function drawCurve(canvas: HTMLCanvasElement, gains: number[], accentColor: stri
   ctx.stroke();
 }
 
+// ─── Custom vertical fader (no native range input) ────────────────────────────
+
+const GAIN_MIN = -12, GAIN_MAX = 12;
+
+interface FaderProps {
+  value: number;
+  disabled: boolean;
+  onChange: (v: number) => void;
+}
+
+function VerticalFader({ value, disabled, onChange }: FaderProps) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
+
+  const gainToPct = (g: number) => (GAIN_MAX - g) / (GAIN_MAX - GAIN_MIN); // 0=top, 1=bottom
+  const pctToGain = (p: number) => GAIN_MAX - p * (GAIN_MAX - GAIN_MIN);
+
+  const updateFromY = useCallback((clientY: number) => {
+    const el = trackRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height));
+    const gain = Math.round(pctToGain(pct) / 0.5) * 0.5; // snap to 0.5 dB
+    onChange(Math.max(GAIN_MIN, Math.min(GAIN_MAX, gain)));
+  }, [onChange]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (disabled) return;
+    dragging.current = true;
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    updateFromY(e.clientY);
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!dragging.current || disabled) return;
+    updateFromY(e.clientY);
+  };
+
+  const onPointerUp = () => { dragging.current = false; };
+
+  const thumbPct = gainToPct(value) * 100;
+
+  return (
+    <div
+      ref={trackRef}
+      className="eq-fader-custom"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      style={{ cursor: disabled ? 'default' : 'pointer' }}
+    >
+      <div className="eq-track-line" />
+      <div className="eq-thumb" style={{ top: `${thumbPct}%`, opacity: disabled ? 0.3 : 1 }} />
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Equalizer() {
   const { t } = useTranslation();
-  const gains         = useEqStore(s => s.gains);
-  const enabled       = useEqStore(s => s.enabled);
-  const activePreset  = useEqStore(s => s.activePreset);
+  const gains = useEqStore(s => s.gains);
+  const enabled = useEqStore(s => s.enabled);
+  const activePreset = useEqStore(s => s.activePreset);
   const customPresets = useEqStore(s => s.customPresets);
   const { setBandGain, setEnabled, applyPreset, saveCustomPreset, deleteCustomPreset } = useEqStore();
 
@@ -137,13 +195,17 @@ export default function Equalizer() {
   const [showSave, setShowSave] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
+  const theme = useThemeStore(s => s.theme);
+
   const redraw = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const accent = getComputedStyle(document.documentElement)
-      .getPropertyValue('--accent').trim() || 'rgb(203, 166, 247)';
-    drawCurve(canvas, gains, accent);
-  }, [gains]);
+    const style = getComputedStyle(document.documentElement);
+    const accent = style.getPropertyValue('--accent').trim() || 'rgb(203, 166, 247)';
+    const bg = style.getPropertyValue('--bg-app').trim() || '#1e1e2e';
+    const text = style.getPropertyValue('--text-muted').trim() || 'rgba(255,255,255,0.4)';
+    drawCurve(canvas, gains, accent, bg, text);
+  }, [gains, theme]);
 
   useEffect(() => { redraw(); }, [redraw]);
 
@@ -153,8 +215,8 @@ export default function Equalizer() {
     return () => ro.disconnect();
   }, [redraw]);
 
-  const allPresets   = [...BUILTIN_PRESETS, ...customPresets];
-  const selectValue  = activePreset ?? '__custom__';
+  const allPresets = [...BUILTIN_PRESETS, ...customPresets];
+  const selectValue = activePreset ?? '__custom__';
   const isCustomSaved = activePreset && !BUILTIN_PRESETS.some(p => p.name === activePreset);
 
   const handleSave = () => {
@@ -245,14 +307,10 @@ export default function Equalizer() {
               </span>
               <div className="eq-fader-track">
                 <div className="eq-zero-mark" />
-                <input
-                  type="range"
-                  className="eq-fader"
-                  min={-12} max={12} step={0.5}
+                <VerticalFader
                   value={gains[i]}
-                  onChange={e => setBandGain(i, parseFloat(e.target.value))}
                   disabled={!enabled}
-                  aria-label={`${band.label} Hz`}
+                  onChange={v => setBandGain(i, v)}
                 />
               </div>
               <span className="eq-freq-label">{band.label}</span>

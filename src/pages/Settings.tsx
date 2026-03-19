@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { version as appVersion } from '../../package.json';
+import changelogRaw from '../../CHANGELOG.md?raw';
 import { useNavigate } from 'react-router-dom';
 import {
-  Wifi, WifiOff, Globe, Music2, Sliders, LogOut, CheckCircle2, FolderOpen, Palette, Server, Plus, Trash2, Eye, EyeOff, Info, ExternalLink, Shuffle
+  Wifi, WifiOff, Globe, Music2, Sliders, LogOut, CheckCircle2, FolderOpen,
+  Palette, Server, Plus, Trash2, Eye, EyeOff, Info, ExternalLink, Shuffle, X, Play
 } from 'lucide-react';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { useAuthStore, ServerProfile } from '../store/authStore';
@@ -13,6 +15,8 @@ import { useTranslation } from 'react-i18next';
 import Equalizer from '../components/Equalizer';
 
 const AUDIOBOOK_GENRES_DISPLAY = ['Hörbuch', 'Hoerbuch', 'Hörspiel', 'Hoerspiel', 'Audiobook', 'Audio Book', 'Spoken Word', 'Spokenword', 'Podcast', 'Kapitel', 'Thriller', 'Krimi', 'Speech', 'Fantasy', 'Comedy', 'Literature'];
+
+type Tab = 'playback' | 'library' | 'appearance' | 'server' | 'about';
 
 function AddServerForm({ onSave, onCancel }: { onSave: (data: Omit<ServerProfile, 'id'>) => void; onCancel: () => void }) {
   const { t } = useTranslation();
@@ -78,6 +82,7 @@ export default function Settings() {
   const navigate = useNavigate();
   const { t, i18n } = useTranslation();
 
+  const [activeTab, setActiveTab] = useState<Tab>('playback');
   const [connStatus, setConnStatus] = useState<Record<string, 'idle' | 'testing' | 'ok' | 'error'>>({});
   const [showAddForm, setShowAddForm] = useState(false);
   const [newGenre, setNewGenre] = useState('');
@@ -145,378 +150,593 @@ export default function Settings() {
     }
   };
 
+  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
+    { id: 'playback',    label: t('settings.tabPlayback'),    icon: <Play size={15} /> },
+    { id: 'library',     label: t('settings.tabLibrary'),     icon: <Shuffle size={15} /> },
+    { id: 'appearance',  label: t('settings.tabAppearance'),  icon: <Palette size={15} /> },
+    { id: 'server',      label: t('settings.tabServer'),      icon: <Server size={15} /> },
+    { id: 'about',       label: t('settings.tabAbout'),       icon: <Info size={15} /> },
+  ];
+
   return (
     <div className="content-body animate-fade-in">
-      <h1 className="page-title" style={{ marginBottom: '2rem' }}>{t('settings.title')}</h1>
+      <h1 className="page-title" style={{ marginBottom: '1.5rem' }}>{t('settings.title')}</h1>
 
-      {/* Language */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Globe size={18} />
-          <h2>{t('settings.language')}</h2>
-        </div>
-        <div className="settings-card">
-          <div className="form-group" style={{ maxWidth: '300px' }}>
-            <select
-              className="input"
-              value={i18n.language}
-              onChange={(e) => i18n.changeLanguage(e.target.value)}
-              aria-label={t('settings.language')}
-            >
-              <option value="en">{t('settings.languageEn')}</option>
-              <option value="de">{t('settings.languageDe')}</option>
-            </select>
-          </div>
-        </div>
-      </section>
+      {/* Tab navigation */}
+      <nav className="settings-tabs" aria-label="Settings navigation">
+        {tabs.map(tab => (
+          <button
+            key={tab.id}
+            className={`settings-tab ${activeTab === tab.id ? 'active' : ''}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
+      </nav>
 
-      {/* Theme */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Palette size={18} />
-          <h2>{t('settings.theme')}</h2>
-        </div>
-        <div className="settings-card">
-          <div className="form-group" style={{ maxWidth: '300px' }}>
-            <select
-              className="input"
-              value={theme.theme}
-              onChange={(e) => theme.setTheme(e.target.value as any)}
-              aria-label={t('settings.theme')}
-            >
-              <option value="mocha">Catppuccin Mocha</option>
-              <option value="macchiato">Catppuccin Macchiato</option>
-              <option value="frappe">Catppuccin Frappé</option>
-              <option value="latte">Catppuccin Latte</option>
-              <option value="nord">Nord · Polar Night</option>
-              <option value="nord-snowstorm">Nord · Snowstorm</option>
-              <option value="nord-frost">Nord · Frost</option>
-              <option value="nord-aurora">Nord · Aurora</option>
-            </select>
-          </div>
-        </div>
-      </section>
+      {/* ── Playback ─────────────────────────────────────────────────────────── */}
+      {activeTab === 'playback' && (
+        <>
+          {/* Equalizer */}
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Sliders size={18} />
+              <h2>{t('settings.eqTitle')}</h2>
+            </div>
+            <div className="settings-card">
+              <Equalizer />
+            </div>
+          </section>
 
-      {/* Servers */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Server size={18} />
-          <h2>{t('settings.servers')}</h2>
-        </div>
+          {/* Replay Gain + Crossfade + Gapless */}
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Music2 size={18} />
+              <h2>{t('settings.playbackTitle')}</h2>
+            </div>
+            <div className="settings-card">
+              {/* Replay Gain */}
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.replayGain')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.replayGainDesc')}</div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.replayGain')}>
+                  <input type="checkbox" checked={auth.replayGainEnabled} onChange={e => auth.setReplayGainEnabled(e.target.checked)} id="replay-gain-toggle" />
+                  <span className="toggle-track" />
+                </label>
+              </div>
+              {auth.replayGainEnabled && (
+                <div style={{ paddingLeft: '1rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('settings.replayGainMode')}:</span>
+                  <button
+                    className={`btn ${auth.replayGainMode === 'track' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: 12, padding: '3px 12px' }}
+                    onClick={() => auth.setReplayGainMode('track')}
+                  >
+                    {t('settings.replayGainTrack')}
+                  </button>
+                  <button
+                    className={`btn ${auth.replayGainMode === 'album' ? 'btn-primary' : 'btn-ghost'}`}
+                    style={{ fontSize: 12, padding: '3px 12px' }}
+                    onClick={() => auth.setReplayGainMode('album')}
+                  >
+                    {t('settings.replayGainAlbum')}
+                  </button>
+                </div>
+              )}
 
-        {auth.servers.length === 0 && !showAddForm ? (
-          <div className="settings-card" style={{ color: 'var(--text-muted)', fontSize: 14 }}>
-            {t('settings.noServers')}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-            {auth.servers.map(srv => {
-              const isActive = srv.id === auth.activeServerId;
-              const status = connStatus[srv.id];
-              return (
-                <div key={srv.id} className="settings-card" style={{ border: isActive ? '1px solid var(--accent)' : undefined }}>
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '2px' }}>
-                        <span style={{ fontWeight: 600 }}>{srv.name || srv.url}</span>
-                        {isActive && (
-                          <span style={{ fontSize: 11, background: 'var(--accent)', color: 'var(--ctp-crust)', padding: '1px 6px', borderRadius: '10px', fontWeight: 600 }}>
-                            {t('settings.serverActive')}
-                          </span>
-                        )}
+              <div className="divider" />
+
+              {/* Crossfade */}
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.crossfade')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.crossfadeDesc')}</div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.crossfade')}>
+                  <input type="checkbox" checked={auth.crossfadeEnabled} onChange={e => auth.setCrossfadeEnabled(e.target.checked)} id="crossfade-toggle" />
+                  <span className="toggle-track" />
+                </label>
+              </div>
+              {auth.crossfadeEnabled && (
+                <div style={{ paddingLeft: '1rem', marginTop: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <input
+                    type="range"
+                    min={1}
+                    max={10}
+                    step={0.5}
+                    value={auth.crossfadeSecs}
+                    onChange={e => auth.setCrossfadeSecs(Number(e.target.value))}
+                    style={{ width: 120 }}
+                    id="crossfade-secs-slider"
+                  />
+                  <span style={{ fontSize: 13, color: 'var(--text-secondary)', minWidth: 28 }}>
+                    {t('settings.crossfadeSecs', { n: auth.crossfadeSecs })}
+                  </span>
+                </div>
+              )}
+
+              <div className="divider" />
+
+              {/* Gapless */}
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.gapless')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.gaplessDesc')}</div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.gapless')}>
+                  <input type="checkbox" checked={auth.gaplessEnabled} onChange={e => auth.setGaplessEnabled(e.target.checked)} id="gapless-toggle" />
+                  <span className="toggle-track" />
+                </label>
+              </div>
+            </div>
+          </section>
+
+          {/* Scrobbling */}
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Music2 size={18} />
+              <h2>{t('settings.lfmTitle')}</h2>
+            </div>
+            <div className="settings-card">
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                <p style={{ marginBottom: '0.5rem' }}>
+                  {t('settings.lfmDesc1')}{' '}
+                  <strong>{t('settings.lfmDesc1NavidromeWebplayer')}</strong>
+                  {' '}{t('settings.lfmDesc1b')}
+                </p>
+                <p>{t('settings.lfmDesc2')}</p>
+              </div>
+              <div className="settings-toggle-row" style={{ marginTop: '1rem' }}>
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.scrobbleEnabled')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.scrobbleDesc')}</div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.scrobbleEnabled')}>
+                  <input type="checkbox" checked={auth.scrobblingEnabled} onChange={e => auth.setScrobblingEnabled(e.target.checked)} id="scrobbling-toggle" />
+                  <span className="toggle-track" />
+                </label>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ── Library ──────────────────────────────────────────────────────────── */}
+      {activeTab === 'library' && (
+        <>
+          {/* Cache */}
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Sliders size={18} />
+              <h2>{t('settings.behavior')}</h2>
+            </div>
+            <div className="settings-card">
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.cacheTitle')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.cacheDesc')} ({auth.maxCacheMb} MB)</div>
+                </div>
+                <input
+                  type="range"
+                  min={100}
+                  max={2000}
+                  step={100}
+                  value={auth.maxCacheMb}
+                  onChange={e => auth.setMaxCacheMb(Number(e.target.value))}
+                  style={{ width: 120 }}
+                  id="cache-size-slider"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Random Mix */}
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Shuffle size={18} />
+              <h2>{t('settings.randomMixTitle')}</h2>
+            </div>
+            <div className="settings-card">
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
+                {t('settings.randomMixBlacklistDesc')}
+              </p>
+
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: '0.5rem' }}>{t('settings.randomMixBlacklistTitle')}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem', minHeight: 32 }}>
+                {auth.customGenreBlacklist.length === 0 ? (
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>{t('settings.randomMixBlacklistEmpty')}</span>
+                ) : (
+                  auth.customGenreBlacklist.map(genre => (
+                    <span key={genre} style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
+                      background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
+                      color: 'var(--accent)', borderRadius: 'var(--radius-sm)',
+                      padding: '2px 8px', fontSize: 12, fontWeight: 500,
+                    }}>
+                      {genre}
+                      <button
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14 }}
+                        onClick={() => auth.setCustomGenreBlacklist(auth.customGenreBlacklist.filter(g => g !== genre))}
+                        aria-label={`Remove ${genre}`}
+                      >×</button>
+                    </span>
+                  ))
+                )}
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem', maxWidth: 400 }}>
+                <input
+                  className="input"
+                  type="text"
+                  value={newGenre}
+                  onChange={e => setNewGenre(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && newGenre.trim()) {
+                      const trimmed = newGenre.trim();
+                      if (!auth.customGenreBlacklist.includes(trimmed)) {
+                        auth.setCustomGenreBlacklist([...auth.customGenreBlacklist, trimmed]);
+                      }
+                      setNewGenre('');
+                    }
+                  }}
+                  placeholder={t('settings.randomMixBlacklistPlaceholder')}
+                  style={{ fontSize: 13 }}
+                />
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => {
+                    const trimmed = newGenre.trim();
+                    if (trimmed && !auth.customGenreBlacklist.includes(trimmed)) {
+                      auth.setCustomGenreBlacklist([...auth.customGenreBlacklist, trimmed]);
+                    }
+                    setNewGenre('');
+                  }}
+                  disabled={!newGenre.trim()}
+                >
+                  {t('settings.randomMixBlacklistAdd')}
+                </button>
+              </div>
+
+              <div className="divider" style={{ margin: '1rem 0' }} />
+
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>{t('settings.randomMixHardcodedTitle')}</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                {AUDIOBOOK_GENRES_DISPLAY.map(genre => (
+                  <span key={genre} style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    background: 'var(--bg-hover)', color: 'var(--text-muted)',
+                    borderRadius: 'var(--radius-sm)', padding: '2px 8px', fontSize: 12,
+                  }}>
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ── Appearance ───────────────────────────────────────────────────────── */}
+      {activeTab === 'appearance' && (
+        <>
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Palette size={18} />
+              <h2>{t('settings.theme')}</h2>
+            </div>
+            <div className="settings-card">
+              <div className="form-group" style={{ maxWidth: '300px' }}>
+                <select
+                  className="input"
+                  value={theme.theme}
+                  onChange={(e) => theme.setTheme(e.target.value as any)}
+                  aria-label={t('settings.theme')}
+                >
+                  <option value="mocha">Catppuccin Mocha</option>
+                  <option value="macchiato">Catppuccin Macchiato</option>
+                  <option value="frappe">Catppuccin Frappé</option>
+                  <option value="latte">Catppuccin Latte</option>
+                  <option value="nord">Nord · Polar Night</option>
+                  <option value="nord-snowstorm">Nord · Snowstorm</option>
+                  <option value="nord-frost">Nord · Frost</option>
+                  <option value="nord-aurora">Nord · Aurora</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Globe size={18} />
+              <h2>{t('settings.language')}</h2>
+            </div>
+            <div className="settings-card">
+              <div className="form-group" style={{ maxWidth: '300px' }}>
+                <select
+                  className="input"
+                  value={i18n.language}
+                  onChange={(e) => i18n.changeLanguage(e.target.value)}
+                  aria-label={t('settings.language')}
+                >
+                  <option value="en">{t('settings.languageEn')}</option>
+                  <option value="de">{t('settings.languageDe')}</option>
+                </select>
+              </div>
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ── Server ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'server' && (
+        <>
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Server size={18} />
+              <h2>{t('settings.servers')}</h2>
+            </div>
+
+            {auth.servers.length === 0 && !showAddForm ? (
+              <div className="settings-card" style={{ color: 'var(--text-muted)', fontSize: 14 }}>
+                {t('settings.noServers')}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {auth.servers.map(srv => {
+                  const isActive = srv.id === auth.activeServerId;
+                  const status = connStatus[srv.id];
+                  return (
+                    <div key={srv.id} className="settings-card" style={{ border: isActive ? '1px solid var(--accent)' : undefined }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '2px' }}>
+                            <span style={{ fontWeight: 600 }}>{srv.name || srv.url}</span>
+                            {isActive && (
+                              <span style={{ fontSize: 11, background: 'var(--accent)', color: 'var(--ctp-crust)', padding: '1px 6px', borderRadius: '10px', fontWeight: 600 }}>
+                                {t('settings.serverActive')}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{srv.username}@{srv.url}</div>
+                        </div>
+                        <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
+                          {status === 'ok' && <CheckCircle2 size={16} style={{ color: 'var(--positive)' }} />}
+                          {status === 'error' && <WifiOff size={16} style={{ color: 'var(--danger)' }} />}
+                          {status === 'testing' && <div className="spinner" style={{ width: 16, height: 16 }} />}
+                          <button
+                            className="btn btn-ghost"
+                            style={{ fontSize: 12, padding: '4px 10px' }}
+                            onClick={() => testConnection(srv)}
+                            disabled={status === 'testing'}
+                          >
+                            <Wifi size={13} />
+                            {t('settings.testBtn')}
+                          </button>
+                          {!isActive && (
+                            <button
+                              className="btn btn-primary"
+                              style={{ fontSize: 12, padding: '4px 10px' }}
+                              onClick={() => switchToServer(srv)}
+                              disabled={status === 'testing'}
+                              id={`settings-use-server-${srv.id}`}
+                            >
+                              {t('settings.useServer')}
+                            </button>
+                          )}
+                          <button
+                            className="btn btn-ghost"
+                            style={{ color: 'var(--danger)', padding: '4px 8px' }}
+                            onClick={() => deleteServer(srv)}
+                            data-tooltip={t('settings.deleteServer')}
+                            id={`settings-delete-server-${srv.id}`}
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
                       </div>
-                      <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{srv.username}@{srv.url}</div>
                     </div>
-                    <div style={{ display: 'flex', gap: '6px', flexShrink: 0, alignItems: 'center' }}>
-                      {status === 'ok' && <CheckCircle2 size={16} style={{ color: 'var(--positive)' }} />}
-                      {status === 'error' && <WifiOff size={16} style={{ color: 'var(--danger)' }} />}
-                      {status === 'testing' && <div className="spinner" style={{ width: 16, height: 16 }} />}
-                      <button
-                        className="btn btn-ghost"
-                        style={{ fontSize: 12, padding: '4px 10px' }}
-                        onClick={() => testConnection(srv)}
-                        disabled={status === 'testing'}
-                      >
-                        <Wifi size={13} />
-                        {t('settings.testBtn')}
-                      </button>
-                      {!isActive && (
-                        <button
-                          className="btn btn-primary"
-                          style={{ fontSize: 12, padding: '4px 10px' }}
-                          onClick={() => switchToServer(srv)}
-                          disabled={status === 'testing'}
-                          id={`settings-use-server-${srv.id}`}
-                        >
-                          {t('settings.useServer')}
-                        </button>
-                      )}
-                      <button
-                        className="btn btn-ghost"
-                        style={{ color: 'var(--danger)', padding: '4px 8px' }}
-                        onClick={() => deleteServer(srv)}
-                        data-tooltip={t('settings.deleteServer')}
-                        id={`settings-delete-server-${srv.id}`}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {showAddForm ? (
+              <AddServerForm onSave={handleAddServer} onCancel={() => setShowAddForm(false)} />
+            ) : (
+              <button className="btn btn-ghost" style={{ marginTop: '0.75rem' }} onClick={() => setShowAddForm(true)} id="settings-add-server-btn">
+                <Plus size={16} /> {t('settings.addServer')}
+              </button>
+            )}
+          </section>
+
+          {/* Downloads + Tray */}
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Sliders size={18} />
+              <h2>{t('settings.behavior')}</h2>
+            </div>
+            <div className="settings-card">
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.trayTitle')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.trayDesc')}</div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.trayTitle')}>
+                  <input type="checkbox" checked={auth.minimizeToTray} onChange={e => auth.setMinimizeToTray(e.target.checked)} id="tray-toggle" />
+                  <span className="toggle-track" />
+                </label>
+              </div>
+
+              <div className="divider" />
+
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.downloadsTitle')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, wordBreak: 'break-all' }}>
+                    {auth.downloadFolder || t('settings.downloadsDefault')}
                   </div>
                 </div>
-              );
-            })}
-          </div>
-        )}
-
-        {showAddForm ? (
-          <AddServerForm onSave={handleAddServer} onCancel={() => setShowAddForm(false)} />
-        ) : (
-          <button className="btn btn-ghost" style={{ marginTop: '0.75rem' }} onClick={() => setShowAddForm(true)} id="settings-add-server-btn">
-            <Plus size={16} /> {t('settings.addServer')}
-          </button>
-        )}
-      </section>
-
-      {/* Equalizer */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Sliders size={18} />
-          <h2>{t('settings.eqTitle')}</h2>
-        </div>
-        <div className="settings-card">
-          <Equalizer />
-        </div>
-      </section>
-
-      {/* Last.fm */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Music2 size={18} />
-          <h2>{t('settings.lfmTitle')}</h2>
-        </div>
-        <div className="settings-card">
-          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
-            <p style={{ marginBottom: '0.5rem' }}>
-              {t('settings.lfmDesc1')}{' '}
-              <strong>{t('settings.lfmDesc1NavidromeWebplayer')}</strong>
-              {' '}{t('settings.lfmDesc1b')}
-            </p>
-            <p>{t('settings.lfmDesc2')}</p>
-          </div>
-
-          <div className="settings-toggle-row" style={{ marginTop: '1rem' }}>
-            <div>
-              <div style={{ fontWeight: 500 }}>{t('settings.scrobbleEnabled')}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.scrobbleDesc')}</div>
-            </div>
-            <label className="toggle-switch" aria-label={t('settings.scrobbleEnabled')}>
-              <input type="checkbox" checked={auth.scrobblingEnabled} onChange={e => auth.setScrobblingEnabled(e.target.checked)} id="scrobbling-toggle" />
-              <span className="toggle-track" />
-            </label>
-          </div>
-        </div>
-      </section>
-
-      {/* App Behavior */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Sliders size={18} />
-          <h2>{t('settings.behavior')}</h2>
-        </div>
-        <div className="settings-card">
-          <div className="settings-toggle-row">
-            <div>
-              <div style={{ fontWeight: 500 }}>{t('settings.trayTitle')}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.trayDesc')}</div>
-            </div>
-            <label className="toggle-switch" aria-label={t('settings.trayTitle')}>
-              <input type="checkbox" checked={auth.minimizeToTray} onChange={e => auth.setMinimizeToTray(e.target.checked)} id="tray-toggle" />
-              <span className="toggle-track" />
-            </label>
-          </div>
-
-          <div className="divider" />
-
-          <div className="settings-toggle-row">
-            <div>
-              <div style={{ fontWeight: 500 }}>{t('settings.cacheTitle')}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.cacheDesc')} ({auth.maxCacheMb} MB)</div>
-            </div>
-            <input
-              type="range"
-              min={100}
-              max={2000}
-              step={100}
-              value={auth.maxCacheMb}
-              onChange={e => auth.setMaxCacheMb(Number(e.target.value))}
-              style={{ width: 120 }}
-              id="cache-size-slider"
-            />
-          </div>
-          <div className="divider" />
-
-          <div className="settings-toggle-row">
-            <div>
-              <div style={{ fontWeight: 500 }}>{t('settings.downloadsTitle')}</div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, wordBreak: 'break-all' }}>
-                {auth.downloadFolder || t('settings.downloadsDefault')}
+                <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                  {auth.downloadFolder && (
+                    <button
+                      className="btn btn-ghost"
+                      onClick={() => auth.setDownloadFolder('')}
+                      aria-label={t('settings.clearFolder')}
+                      data-tooltip={t('settings.clearFolder')}
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      <X size={16} />
+                    </button>
+                  )}
+                  <button className="btn btn-ghost" onClick={pickDownloadFolder} id="settings-download-folder-btn">
+                    <FolderOpen size={16} /> {t('settings.pickFolder')}
+                  </button>
+                </div>
               </div>
             </div>
-            <button className="btn btn-ghost" onClick={pickDownloadFolder} id="settings-download-folder-btn" style={{ flexShrink: 0 }}>
-              <FolderOpen size={16} /> {t('settings.pickFolder')}
+          </section>
+        </>
+      )}
+
+      {/* ── About ────────────────────────────────────────────────────────────── */}
+      {activeTab === 'about' && (
+        <>
+          <section className="settings-section">
+            <div className="settings-section-header">
+              <Info size={18} />
+              <h2>{t('settings.aboutTitle')}</h2>
+            </div>
+            <div className="settings-card settings-about">
+              <div className="settings-about-header">
+                <img src="/logo-psysonic.png" width={52} height={52} alt="Psysonic" style={{ borderRadius: 14 }} />
+                <div>
+                  <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    Psysonic
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
+                    {t('settings.aboutVersion')} {appVersion}
+                  </div>
+                </div>
+              </div>
+
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '1rem 0 0.5rem' }}>
+                {t('settings.aboutDesc')}
+              </p>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, margin: '0.5rem 0' }}>
+                {t('settings.aboutFeatures')}
+              </p>
+
+              <div className="divider" style={{ margin: '1rem 0' }} />
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: 13 }}>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-muted)', minWidth: 56 }}>{t('settings.aboutLicense')}</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('settings.aboutLicenseText')}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-muted)', minWidth: 56 }}>Stack</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('settings.aboutBuiltWith')}</span>
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <span style={{ color: 'var(--text-muted)', minWidth: 56 }}>AI</span>
+                  <span style={{ color: 'var(--text-secondary)' }}>{t('settings.aboutAiCredit')}</span>
+                </div>
+              </div>
+
+              <button
+                className="btn btn-ghost"
+                style={{ marginTop: '1.25rem', alignSelf: 'flex-start' }}
+                onClick={() => openUrl('https://github.com/Psychotoxical/psysonic')}
+              >
+                <ExternalLink size={14} />
+                {t('settings.aboutRepo')}
+              </button>
+            </div>
+          </section>
+
+          <ChangelogSection />
+
+          <section className="settings-section">
+            <button className="btn btn-ghost" style={{ color: 'var(--danger)' }} onClick={handleLogout} id="settings-logout-btn">
+              <LogOut size={16} /> {t('settings.logout')}
             </button>
-          </div>
-        </div>
-      </section>
-
-      {/* Random Mix */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Shuffle size={18} />
-          <h2>{t('settings.randomMixTitle')}</h2>
-        </div>
-        <div className="settings-card">
-          {/* Description */}
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: '1rem', lineHeight: 1.5 }}>
-            {t('settings.randomMixBlacklistDesc')}
-          </p>
-
-          {/* Custom blacklist chips */}
-          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: '0.5rem' }}>{t('settings.randomMixBlacklistTitle')}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.75rem', minHeight: 32 }}>
-            {auth.customGenreBlacklist.length === 0 ? (
-              <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>{t('settings.randomMixBlacklistEmpty')}</span>
-            ) : (
-              auth.customGenreBlacklist.map(genre => (
-                <span key={genre} style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  background: 'color-mix(in srgb, var(--accent) 15%, transparent)',
-                  color: 'var(--accent)', borderRadius: 'var(--radius-sm)',
-                  padding: '2px 8px', fontSize: 12, fontWeight: 500,
-                }}>
-                  {genre}
-                  <button
-                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', padding: 0, lineHeight: 1, fontSize: 14 }}
-                    onClick={() => auth.setCustomGenreBlacklist(auth.customGenreBlacklist.filter(g => g !== genre))}
-                    aria-label={`Remove ${genre}`}
-                  >×</button>
-                </span>
-              ))
-            )}
-          </div>
-
-          {/* Add input */}
-          <div style={{ display: 'flex', gap: '0.5rem', maxWidth: 400 }}>
-            <input
-              className="input"
-              type="text"
-              value={newGenre}
-              onChange={e => setNewGenre(e.target.value)}
-              onKeyDown={e => {
-                if (e.key === 'Enter' && newGenre.trim()) {
-                  const trimmed = newGenre.trim();
-                  if (!auth.customGenreBlacklist.includes(trimmed)) {
-                    auth.setCustomGenreBlacklist([...auth.customGenreBlacklist, trimmed]);
-                  }
-                  setNewGenre('');
-                }
-              }}
-              placeholder={t('settings.randomMixBlacklistPlaceholder')}
-              style={{ fontSize: 13 }}
-            />
-            <button
-              className="btn btn-ghost"
-              onClick={() => {
-                const trimmed = newGenre.trim();
-                if (trimmed && !auth.customGenreBlacklist.includes(trimmed)) {
-                  auth.setCustomGenreBlacklist([...auth.customGenreBlacklist, trimmed]);
-                }
-                setNewGenre('');
-              }}
-              disabled={!newGenre.trim()}
-            >
-              {t('settings.randomMixBlacklistAdd')}
-            </button>
-          </div>
-
-          <div className="divider" style={{ margin: '1rem 0' }} />
-
-          {/* Hardcoded list */}
-          <div style={{ fontSize: 13, fontWeight: 500, marginBottom: '0.5rem', color: 'var(--text-muted)' }}>{t('settings.randomMixHardcodedTitle')}</div>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
-            {AUDIOBOOK_GENRES_DISPLAY.map(genre => (
-              <span key={genre} style={{
-                display: 'inline-flex', alignItems: 'center',
-                background: 'var(--bg-hover)', color: 'var(--text-muted)',
-                borderRadius: 'var(--radius-sm)', padding: '2px 8px', fontSize: 12,
-              }}>
-                {genre}
-              </span>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Logout */}
-      <section className="settings-section">
-        <button className="btn btn-ghost" style={{ color: 'var(--danger)' }} onClick={handleLogout} id="settings-logout-btn">
-          <LogOut size={16} /> {t('settings.logout')}
-        </button>
-      </section>
-
-      {/* About */}
-      <section className="settings-section">
-        <div className="settings-section-header">
-          <Info size={18} />
-          <h2>{t('settings.aboutTitle')}</h2>
-        </div>
-        <div className="settings-card settings-about">
-          <div className="settings-about-header">
-            <img src="/logo-psysonic.png" width={52} height={52} alt="Psysonic" style={{ borderRadius: 14 }} />
-            <div>
-              <div style={{ fontFamily: 'var(--font-display)', fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                Psysonic
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                {t('settings.aboutVersion')} {appVersion}
-              </div>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '1rem 0 0.5rem' }}>
-            {t('settings.aboutDesc')}
-          </p>
-          <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.6, margin: '0.5rem 0' }}>
-            {t('settings.aboutFeatures')}
-          </p>
-
-          <div className="divider" style={{ margin: '1rem 0' }} />
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem', fontSize: 13 }}>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <span style={{ color: 'var(--text-muted)', minWidth: 56 }}>{t('settings.aboutLicense')}</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{t('settings.aboutLicenseText')}</span>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <span style={{ color: 'var(--text-muted)', minWidth: 56 }}>Stack</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{t('settings.aboutBuiltWith')}</span>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
-              <span style={{ color: 'var(--text-muted)', minWidth: 56 }}>AI</span>
-              <span style={{ color: 'var(--text-secondary)' }}>{t('settings.aboutAiCredit')}</span>
-            </div>
-          </div>
-
-          <button
-            className="btn btn-ghost"
-            style={{ marginTop: '1.25rem', alignSelf: 'flex-start' }}
-            onClick={() => openUrl('https://github.com/Psychotoxical/psysonic')}
-          >
-            <ExternalLink size={14} />
-            {t('settings.aboutRepo')}
-          </button>
-        </div>
-      </section>
+          </section>
+        </>
+      )}
     </div>
+  );
+}
+
+// ─── Changelog renderer ───────────────────────────────────────────────────────
+
+function renderInline(text: string): React.ReactNode[] {
+  // Splits on **bold**, *italic*, `code` and renders each part.
+  const parts = text.split(/(\*\*[^*]+\*\*|\*[^*]+\*|`[^`]+`)/g);
+  return parts.map((part, i) => {
+    if (part.startsWith('**') && part.endsWith('**'))
+      return <strong key={i}>{part.slice(2, -2)}</strong>;
+    if (part.startsWith('*') && part.endsWith('*'))
+      return <em key={i}>{part.slice(1, -1)}</em>;
+    if (part.startsWith('`') && part.endsWith('`'))
+      return <code key={i} className="changelog-code">{part.slice(1, -1)}</code>;
+    return part;
+  });
+}
+
+function ChangelogSection() {
+  const { t } = useTranslation();
+
+  const versions = useMemo(() => {
+    const blocks = changelogRaw.split(/\n(?=## \[)/).filter(b => b.startsWith('## ['));
+    return blocks.map(block => {
+      const lines = block.split('\n');
+      const headerLine = lines[0]; // e.g. "## [1.5.0] - 2026-03-18"
+      const versionMatch = headerLine.match(/## \[([^\]]+)\]/);
+      const dateMatch = headerLine.match(/- (\d{4}-\d{2}-\d{2})/);
+      const version = versionMatch?.[1] ?? '';
+      const date = dateMatch?.[1] ?? '';
+
+      // Parse the rest into rendered lines
+      const body = lines.slice(1).join('\n').trim();
+      return { version, date, body };
+    });
+  }, []);
+
+  return (
+    <section className="settings-section">
+      <div className="settings-section-header">
+        <Info size={18} />
+        <h2>{t('settings.changelog')}</h2>
+      </div>
+      <div className="changelog-list">
+        {versions.map(({ version, date, body }) => (
+          <details key={version} className="changelog-entry" open={version === appVersion}>
+            <summary className="changelog-summary">
+              <span className="changelog-version">v{version}</span>
+              <span className="changelog-date">{date}</span>
+            </summary>
+            <div className="changelog-body">
+              {body.split('\n').map((line, i) => {
+                if (line.startsWith('### ')) {
+                  return <div key={i} className="changelog-h3">{renderInline(line.slice(4))}</div>;
+                }
+                if (line.startsWith('#### ')) {
+                  return <div key={i} className="changelog-h4">{renderInline(line.slice(5))}</div>;
+                }
+                if (line.startsWith('- ')) {
+                  return <div key={i} className="changelog-item">{renderInline(line.slice(2))}</div>;
+                }
+                if (line.trim() === '') return null;
+                return <div key={i} className="changelog-text">{renderInline(line)}</div>;
+              })}
+            </div>
+          </details>
+        ))}
+      </div>
+    </section>
   );
 }
