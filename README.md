@@ -22,11 +22,11 @@ Designed specifically for users hosting their own music via Navidrome or other S
 
 ## ✨ Features
 
-- 🎨 **Gorgeous UI**: 8 deeply integrated themes (Catppuccin series + Nord series) with smooth glassmorphism effects and micro-animations.
+- 🎨 **Gorgeous UI**: 9 deeply integrated themes (Catppuccin series, Nord series, Psychowave) with smooth glassmorphism effects and micro-animations.
 - ⚡ **Blazing Fast**: Built with Rust & Tauri — native audio engine (rodio), minimal RAM usage compared to typical Electron apps.
 - 🌍 **Internationalization (i18n)**: Fully translated into English and German.
 - 📻 **Live "Now Playing"**: See what other users on your server are currently listening to in real-time.
-- 🎵 **Last.fm Scrobbling**: Full integration for scrobbling your tracks via the Navidrome server.
+- 🎵 **Last.fm Integration** *(Beta)*: Direct scrobbling, Now Playing updates, love/unlove, Similar Artists, and top stats — no Navidrome configuration required.
 - 💾 **IndexedDB Caching**: Ultra-fast loading times with persistent IndexedDB image caching for cover art and artist images.
 - 📀 **Album Downloads**: Support for downloading entire albums directly to your local machine.
 - 💿 **Album & Artist Views**: Beautiful grid displays and detailed artist pages with related albums and color-coded initial avatars for fast browsing.
@@ -36,6 +36,40 @@ Designed specifically for users hosting their own music via Navidrome or other S
 - 🎼 **Random Mix**: Generate a random playlist from your entire library. Filter by keyword or pick a Super Genre (Metal, Rock, Electronic, Jazz…) for a focused mix with progressive loading.
 - 🔄 **Update Notifications**: Built-in update checker (on startup + every 10 minutes) that notifies you when a new version is available on GitHub.
 - 🖥️ **Cross-Platform**: Available natively for Windows, macOS, and Linux (including Wayland support).
+
+## 🗺️ Roadmap
+
+### ✅ Completed
+- [x] Native Rust/rodio audio engine (replaces Howler.js)
+- [x] 10-band graphic EQ with built-in and custom presets
+- [x] Crossfade between tracks
+- [x] Replay Gain (track + album mode)
+- [x] Gapless playback *(experimental)*
+- [x] MilkDrop/Butterchurn visualizer
+- [x] Waveform seekbar
+- [x] Last.fm scrobbling, Now Playing & love/unlove *(beta)*
+- [x] Similar Artists via Last.fm, filtered to library
+- [x] Statistics — Last.fm top charts & recent scrobbles
+- [x] Multi-server support
+- [x] IndexedDB image caching
+- [x] Random Mix with keyword filter & Super Genre mix
+- [x] 9 themes: Catppuccin series, Nord series, Psychowave
+- [x] Internationalization (English + German)
+- [x] AUR package (Arch / CachyOS)
+
+### 🚧 In Progress
+- [ ] **Psychowave theme** — visual refinement still ongoing
+- [ ] **Last.fm integration** — stabilising, moving out of beta
+- [ ] **Gapless playback** — edge case stabilisation
+- [ ] **Crossfade** — stability improvements
+
+### 📋 Planned
+- [ ] FLAC seeking fix
+- [ ] More themes
+- [ ] General UI polish & visual refinement
+- [ ] More languages
+
+---
 
 ## ● Known Limitations
 
