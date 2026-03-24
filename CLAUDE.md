@@ -50,7 +50,7 @@ There are no test scripts. TypeScript compilation (`tsc`) is part of the build.
 | `src/store/authStore.ts` | Multi-server support via `ServerProfile[]` + `activeServerId`. `getBaseUrl()` / `getActiveServer()` used by subsonic.ts. Also stores Last.fm session key, username, scrobbling toggle. Persisted via **`localStorage`** (synchronous — do not change to async storage). |
 | `src/store/playerStore.ts` | Playback state, queue, scrobbling at 50% via Last.fm, server queue sync (debounced 1.5s). On `playTrack`: calls `reportNowPlaying` (Navidrome) + `lastfmUpdateNowPlaying` (Last.fm) independently. Persists `currentTrack`, `queue`, `queueIndex`, `currentTime` for cold-start resume. |
 | `src-tauri/src/audio.rs` | Rust audio engine: `audio_play`, `audio_pause`, `audio_resume`, `audio_stop`, `audio_seek`, `audio_set_volume` commands. Emits `audio:playing`, `audio:progress` (100ms), `audio:ended`, `audio:error` events. `MASTER_HEADROOM` (-1 dB) prevents inter-sample clipping at full volume. |
-| `src/store/themeStore.ts` | Theme selection (47 themes across 7 groups), applied as `data-theme` on `<html>` |
+| `src/store/themeStore.ts` | Theme selection (62 themes across 8 groups), applied as `data-theme` on `<html>` |
 | `src/store/lyricsStore.ts` | Sidebar tab state (`activeTab: 'queue' \| 'lyrics'`). `showLyrics()` / `showQueue()` / `setTab()`. Not persisted. |
 | `src/components/LyricsPane.tsx` | Lyrics pane rendered inside QueuePanel when `activeTab === 'lyrics'`. Fetches from LRCLIB, parses LRC, auto-scrolls active line. Only subscribes to `currentTime` when synced lyrics are present. |
 | `src/api/lrclib.ts` | Fetches lyrics from `https://lrclib.net/api/get`. Returns `{ syncedLyrics, plainLyrics }`. `parseLrc()` parses LRC timestamps into sorted `LrcLine[]`. |
@@ -113,7 +113,7 @@ Use `getActiveServer()` to get the current server, `getBaseUrl()` to get its URL
 Add a function to `src/api/subsonic.ts` using the `api<T>()` helper. The helper automatically injects auth params and unwraps `subsonic-response`.
 
 ### Themes
-47 themes across 7 groups, selectable in Settings via `ThemePicker`. `themeStore` persists the choice and sets `data-theme` on `<html>`. All component CSS uses semantic tokens (`--accent`, `--text-primary`, etc.) — only the player button gradient and a few decorative elements reference `--ctp-*` palette vars directly, so every theme must define the full `--ctp-*` set.
+62 themes across 8 groups, selectable in Settings via `ThemePicker`. `themeStore` persists the choice and sets `data-theme` on `<html>`. All component CSS uses semantic tokens (`--accent`, `--text-primary`, etc.) — only the player button gradient and a few decorative elements reference `--ctp-*` palette vars directly, so every theme must define the full `--ctp-*` set.
 
 `--volume-accent` overrides the volume slider colour independently of `--accent` (used by WnAmp for orange volume, yellow accent elsewhere).
 
@@ -124,13 +124,13 @@ Add a function to `src/api/subsonic.ts` using the `api<T>()` helper. The helper 
 | `psychowave` | Psysonic Themes | deep violet synthwave | Purple `#a06ae0` |
 | `vintage-tube-radio` | Psysonic Themes | warm brown, VFD orange | Orange `#FF6F00` |
 | `neon-drift` | Psysonic Themes | midnight blue, electric cyan glow | Cyan `#00f2ff` |
-| `wnamp` | Psysonic — Mediaplayer | cool gray-blue dark, LCD glow, Courier New | Yellow `#d4cc46`, volume `#de9b35` |
-| `navy-jukebox` | Psysonic — Mediaplayer | silver/blue light | Blue `#0070a0` |
-| `cobalt-media` | Psysonic — Mediaplayer | cobalt blue dark | Lime `#45ff00` |
-| `onyx-cinema` | Psysonic — Mediaplayer | near-black cinematic | Cyan `#00aaff` |
-| `spotless` | Psysonic — Mediaplayer | flat dark, Spotify-inspired | Green `#1ED760` |
-| `dzr0` | Psysonic — Mediaplayer | flat light, Deezer-inspired | Purple `#A238FF` |
-| `cupertino-beats` | Psysonic — Mediaplayer | Apple Music dark, glassmorphism | Red `#fa243c` |
+| `wnamp` | Mediaplayer | cool gray-blue dark, LCD glow, Courier New | Yellow `#d4cc46`, volume `#de9b35` |
+| `navy-jukebox` | Mediaplayer | silver/blue light | Blue `#0070a0` |
+| `cobalt-media` | Mediaplayer | cobalt blue dark | Lime `#45ff00` |
+| `onyx-cinema` | Mediaplayer | near-black cinematic | Cyan `#00aaff` |
+| `spotless` | Mediaplayer | flat dark, Spotify-inspired | Green `#1ED760` |
+| `dzr0` | Mediaplayer | flat light, Deezer-inspired | Purple `#A238FF` |
+| `cupertino-beats` | Mediaplayer | Apple Music dark, glassmorphism | Red `#fa243c` |
 | `cupertino-light` | Operating Systems | macOS light, frosted glass | Apple Blue `#0071e3` |
 | `cupertino-dark` | Operating Systems | macOS Space Grey, frosted glass | Vibrant Blue `#007aff` |
 | `aero-glass` | Operating Systems | Win7 Aero glass blue | Blue `#1878e8` |
@@ -141,17 +141,29 @@ Add a function to `src/api/subsonic.ts` using the `api<T>()` helper. The helper 
 | `grand-theft-audio` | Games | GTA night city | Green `#57b05a` |
 | `lambda-17` | Games | Half-Life orange alert | Amber `#ff9d00` |
 | `nightcity-2077` | Games | Cyberpunk 2077 | Neon Yellow `#FCEE0A` |
+| `tetrastack` | Games | Tetris 8-bit, grid background | Cyan `#00f0f0` |
 | `v-tactical` | Games | Battlefield | Burnt Orange `#ff8a00` |
+| `b-runner` | Movies | Blade Runner 2049, amber neon | Amber `#ff9500` |
 | `blade` | Movies | deep black, blood-red | Red `#b30000` |
+| `dune` | Movies | Arrakis desert stone, spice orange | Orange `#ff8c00` |
+| `hill-valley-85` | Movies | Back to the Future, brushed metal | Orange `#ff9900` |
 | `imperial-sith` | Movies | Star Wars dark side | Red `#e60000` |
 | `middle-earth` | Movies | warm parchment light (LOTR) | Gold `#d4af37` |
 | `morpheus` | Movies | Matrix terminal | Phosphor Green `#00ff41` |
 | `order-of-the-phoenix` | Movies | Harry Potter | Ember Orange `#e63900` |
 | `pandora` | Movies | Avatar bioluminescent | Cyan `#00f2ff` |
+| `spider-tech` | Movies | Spider-Man navy blue, hero red | Red `#E62429` |
 | `stark-hud` | Movies | Iron Man HUD | Cyan `#00f2ff` |
+| `t-800` | Movies | Terminator, Skynet blue | Cyan `#00d4ff` |
+| `aqua-quartz` | Operating Systems | Mac OS X Aqua, skeuomorphic jelly buttons | Blue `#3876f7` |
+| `w3-1` | Operating Systems | Windows 3.1, light silver/teal | Navy `#000080` |
 | `ice-and-fire` | Series | Game of Thrones | Ice Blue `#70a1ff` |
 | `doh-matic` | Series | The Simpsons | Blue `#1F75FE` |
 | `heisenberg` | Series | Breaking Bad | Crystal Blue `#3fe0ff` |
+| `turtle-power` | Series | TMNT, turtle green, brick sidebar | Green `#33cc33` |
+| `insta` | Social Media | Instagram dark, pink gradient | Pink `#E1306C` |
+| `readit` | Social Media | Reddit dark, orange-red | OrangeRed `#FF4500` |
+| `the-book` | Social Media | Facebook light, blue sidebar | Blue `#1877F2` |
 | `mocha` | Open Source Classics | Catppuccin dark | Mauve |
 | `macchiato` | Open Source Classics | Catppuccin medium-dark | Mauve |
 | `frappe` | Open Source Classics | Catppuccin medium | Mauve |
@@ -246,4 +258,4 @@ The workflow is split into three jobs: `create-release` (creates the GitHub Rele
 - **CoverLightbox**: Shared component (`src/components/CoverLightbox.tsx`). Props: `{ src, alt, onClose }`. ESC + overlay click to close. Used in `AlbumHeader` (album cover) and `ArtistDetail` (artist avatar, wrapped in `.artist-detail-avatar-btn`).
 - **Home page**: Section order: recent → discover → artist discovery (pill-buttons, no images) → starred → mostPlayed. Artist discovery uses `getArtists()` full list + client-side Fisher-Yates shuffle (16 random), rendered as `artist-ext-link` pill-buttons (same as ArtistDetail "Similar Artists") — no image loading, no performance impact.
 - **CoverLightbox + EQ popup**: Both use `createPortal(…, document.body)` to escape `backdrop-filter` CSS containing-block issues on the player bar and other ancestors.
-- **Version**: 1.15.0
+- **Version**: 1.16.0

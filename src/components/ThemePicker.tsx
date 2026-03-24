@@ -18,19 +18,22 @@ const THEME_GROUPS: { group: string; themes: ThemeDef[] }[] = [
       { id: 'grand-theft-audio', label: 'Grand Theft Audio', bg: '#141414', card: '#0a0a0a', accent: '#57b05a' },
       { id: 'lambda-17',         label: 'Lambda 17',         bg: '#14171a', card: '#0a0b0c', accent: '#ff9d00' },
       { id: 'nightcity-2077',    label: 'NightCity 2077',    bg: '#050505', card: '#000000', accent: '#FCEE0A' },
+      { id: 'tetrastack',        label: 'TetraStack',        bg: '#0a0a0a', card: '#151515', accent: '#00f0f0' },
       { id: 'v-tactical',        label: 'V-Tactical',        bg: '#161c22', card: '#090c0e', accent: '#ff8a00' },
     ],
   },
   {
     group: 'Movies',
     themes: [
+      { id: 'b-runner',             label: 'B-Runner',             bg: '#141211', card: '#080707', accent: '#ff9500' },
       { id: 'blade',                label: 'Blade',                bg: '#121212', card: '#050505', accent: '#b30000' },
-      { id: 'imperial-sith',        label: 'Imperial Sith',        bg: '#0f0f11', card: '#050505', accent: '#e60000' },
+      { id: 'dune',                 label: 'Dune',                 bg: '#1c1917', card: '#0c0a09', accent: '#ff8c00' },
+      { id: 'hill-valley-85',       label: 'Hill Valley 85',       bg: '#1a1d23', card: '#0a0a0c', accent: '#ff9900' },
       { id: 'middle-earth',         label: 'Middle Earth',         bg: '#f4e4bc', card: '#2a1d15', accent: '#d4af37' },
       { id: 'morpheus',             label: 'Morpheus',             bg: '#0a0a0a', card: '#000000', accent: '#00ff41' },
-      { id: 'order-of-the-phoenix', label: 'Order of the Phoenix', bg: '#181818', card: '#0a0a0a', accent: '#e63900' },
-      { id: 'pandora',              label: 'Pandora',              bg: '#0c1b22', card: '#142b35', accent: '#00f2ff' },
+      { id: 'spider-tech',          label: 'Spider-Tech',          bg: '#0F172A', card: '#050C1A', accent: '#E62429' },
       { id: 'stark-hud',            label: 'Stark HUD',            bg: '#0b0f15', card: '#05070a', accent: '#00f2ff' },
+      { id: 't-800',                label: 'T-800',                bg: '#1f242d', card: '#0a0c10', accent: '#00d4ff' },
     ],
   },
   {
@@ -55,8 +58,10 @@ const THEME_GROUPS: { group: string; themes: ThemeDef[] }[] = [
   {
     group: 'Operating Systems',
     themes: [
+      { id: 'aqua-quartz',     label: 'Aqua Quartz',     bg: '#f6f6f6', card: '#ffffff',  accent: '#3876f7' },
       { id: 'cupertino-dark',  label: 'Cupertino Dark',  bg: '#1e1e1f', card: '#2d2d2f', accent: '#007aff' },
       { id: 'cupertino-light', label: 'Cupertino Light', bg: '#ffffff', card: '#f2f2f7', accent: '#0071e3' },
+      { id: 'w3-1',            label: 'W3.1',            bg: '#008080', card: '#c0c0c0', accent: '#000080' },
       { id: 'aero-glass',      label: 'W7',              bg: '#cddbed', card: '#1d4268', accent: '#1878e8' },
       { id: 'w98',             label: 'W98',             bg: '#008080', card: '#c0c0c0', accent: '#000080' },
       { id: 'luna-teal',       label: 'WXP',             bg: '#ece9d8', card: '#0055e5', accent: '#3c9d29' },
@@ -73,7 +78,7 @@ const THEME_GROUPS: { group: string; themes: ThemeDef[] }[] = [
     ],
   },
   {
-    group: 'Psysonic Themes — Mediaplayer',
+    group: 'Mediaplayer',
     themes: [
       { id: 'cobalt-media',    label: 'Cobalt Media',    bg: '#3a62a5', card: '#000000', accent: '#45ff00' },
       { id: 'cupertino-beats', label: 'Cupertino Beats', bg: '#1c1c1e', card: '#2c2c2e', accent: '#fa243c' },
@@ -81,6 +86,7 @@ const THEME_GROUPS: { group: string; themes: ThemeDef[] }[] = [
       { id: 'navy-jukebox',    label: 'Navy Jukebox',    bg: '#d4d8db', card: '#001358', accent: '#0070a0' },
       { id: 'onyx-cinema',     label: 'Onyx Cinema',     bg: '#141414', card: '#000000', accent: '#00aaff' },
       { id: 'spotless',        label: 'Spotless',        bg: '#121212', card: '#181818', accent: '#1ED760' },
+      { id: 'jayfin',          label: 'Jayfin',          bg: '#141414', card: '#1e1e1e', accent: '#AA5CC3' },
       { id: 'wnamp',           label: 'WnAmp',           bg: '#2b2b3a', card: '#000000', accent: '#00ff00' },
     ],
   },
@@ -90,6 +96,15 @@ const THEME_GROUPS: { group: string; themes: ThemeDef[] }[] = [
       { id: 'ice-and-fire', label: 'A Theme of Ice and Fire', bg: '#121820', card: '#05070a', accent: '#70a1ff' },
       { id: 'doh-matic',    label: "D'oh-matic",              bg: '#FFFDF0', card: '#FFD90F', accent: '#1F75FE' },
       { id: 'heisenberg',   label: 'Heisenberg',              bg: '#1a1d1a', card: '#0a0c0a', accent: '#3fe0ff' },
+      { id: 'turtle-power', label: 'Turtle Power',            bg: '#1a1a1a', card: '#0a0a0a', accent: '#33cc33' },
+    ],
+  },
+  {
+    group: 'Social Media',
+    themes: [
+      { id: 'insta',    label: 'Insta',    bg: '#121212', card: '#000000', accent: '#E1306C' },
+      { id: 'readit',   label: 'ReadIt',   bg: '#030303', card: '#1A1A1B', accent: '#FF4500' },
+      { id: 'the-book', label: 'The Book', bg: '#F0F2F5', card: '#FFFFFF',  accent: '#1877F2' },
     ],
   },
 ];

@@ -5,6 +5,40 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0] - 2026-03-24
+
+### Added
+
+- **15 New Themes** across multiple categories:
+  - *Operating Systems*: **Aqua Quartz** — Mac OS X Aqua (skeuomorphic jelly buttons, brushed aluminium player bar, pinstripe background, blue Source List sidebar, authentic `#3876f7` accent)
+  - *Movies*: **Spider-Tech** (Spider-Man navy/red), **T-800** (Terminator Skynet blue), **B-Runner** (Blade Runner 2049 amber), **Hill Valley 85** (Back to the Future)
+  - *Games*: **TetraStack** (Tetris 8-bit, cyan, grid background, 0px radii)
+  - *Series*: **Turtle Power** (TMNT turtle green, brick tile sidebar)
+  - *Social Media* (new group): **Insta** (Instagram dark pink), **ReadIt** (Reddit dark orange-red), **The Book** (Facebook light, blue sidebar)
+  - *Operating Systems*: **W3.1** (Windows 3.1, light silver/teal, 0px radii, inset bevels)
+  - *Mediaplayer*: **Jayfin** (Jellyfin-inspired — deep black, purple `#AA5CC3` primary, cyan `#00A4DC` secondary, brand gradient on player bar and progress fill)
+- **Aqua Quartz — Full Skeuomorphic Polish**: All button variants (`.btn-surface`, `.btn-ghost`, `.hero-play-btn`, `.album-card-details-btn`, `.queue-round-btn`) now have the authentic Aqua jelly gradient. Sidebar sports the iconic blue Source List gradient with white icons and a white pill for the active nav link.
+
+### Changed
+
+- **W98 Theme — Complete Overhaul**: Rebuilt from scratch with authentic Windows 98 design language: correct `#d4d0c8` warm-gray button face (not flat `#c0c0c0`), full 4-layer 3D bevel on all panels and buttons (raised default, sunken on press), song title displays in the iconic navy→light-blue title bar gradient, progress bar is a sunken white trough with navy fill, 16px styled scrollbar, all hover/active states consistently navy `#000080` + white text.
+- **Theme Picker — Alphabetical Order**: All theme groups and themes within groups are now sorted alphabetically.
+- **Theme Picker — Group Rename**: "Psysonic Themes — Mediaplayer" renamed to "Mediaplayer".
+- **Sidebar + Queue Toggle Buttons**: Queue toggle button now uses the theme accent color (icon + hover).
+
+### Fixed
+
+- **AlbumDetail — Genre not propagating**: Playing via the album detail Play All / Enqueue All buttons now correctly includes the track genre in the constructed Track objects, making it show up in the Queue strip.
+- **W98 — Theme Accordion active state**: Open category headers are now navy with white text instead of black-on-navy.
+- **Aqua Quartz — Sidebar section labels**: "Library" / "System" labels now render in white on the blue sidebar.
+- **W98 — Connection indicators**: Server name and Last.fm username in the header are now black (`#000000`) on the warm-gray background for full readability.
+
+### Removed
+
+- **Themes**: Removed **Pandora**, **Order of the Phoenix**, and **Imperial Sith** — too similar to other better-executed themes in their respective groups.
+
+---
+
 ## [1.15.0] - 2026-03-23
 
 ### Added
