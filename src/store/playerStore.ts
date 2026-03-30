@@ -159,6 +159,11 @@ function handleAudioPlaying(_duration: number) {
 }
 
 function handleAudioProgress(current_time: number, duration: number) {
+  // While a seek is pending, the store already holds the optimistic target
+  // position.  Accepting stale progress from the Rust engine would briefly
+  // snap the waveform back to the old position before the seek completes.
+  if (seekDebounce) return;
+
   const store = usePlayerStore.getState();
   const track = store.currentTrack;
   if (!track) return;
