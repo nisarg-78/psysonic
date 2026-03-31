@@ -26,6 +26,8 @@ import Help from './pages/Help';
 import RandomAlbums from './pages/RandomAlbums';
 import SearchResults from './pages/SearchResults';
 import AdvancedSearch from './pages/AdvancedSearch';
+import Playlists from './pages/Playlists';
+import PlaylistDetail from './pages/PlaylistDetail';
 import NowPlayingPage from './pages/NowPlaying';
 import FullscreenPlayer from './components/FullscreenPlayer';
 import ContextMenu from './components/ContextMenu';
@@ -251,6 +253,8 @@ function AppShell() {
             <Route path="/offline" element={<OfflineLibrary />} />
             <Route path="/genres" element={<Genres />} />
             <Route path="/genres/:name" element={<GenreDetail />} />
+            <Route path="/playlists" element={<Playlists />} />
+            <Route path="/playlists/:id" element={<PlaylistDetail />} />
           </Routes>
         </div>
       </main>

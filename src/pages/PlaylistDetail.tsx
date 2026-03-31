@@ -1,0 +1,614 @@
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { ChevronLeft, Play, ListPlus, Trash2, Search, X, Loader2, Plus, GripVertical, Star, RefreshCw } from 'lucide-react';
+import {
+  getPlaylist, updatePlaylist, search, setRating, star, unstar,
+  getSimilarSongs2, SubsonicPlaylist, SubsonicSong,
+} from '../api/subsonic';
+import { usePlayerStore, songToTrack } from '../store/playerStore';
+import { usePlaylistStore } from '../store/playlistStore';
+import { useDragDrop } from '../contexts/DragDropContext';
+import CachedImage, { useCachedUrl } from '../components/CachedImage';
+import { coverArtCacheKey, buildCoverArtUrl } from '../api/subsonic';
+import { useTranslation } from 'react-i18next';
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function totalDurationLabel(songs: SubsonicSong[]): string {
+  const total = songs.reduce((acc, s) => acc + (s.duration ?? 0), 0);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+}
+
+function codecLabel(song: SubsonicSong): string {
+  const parts: string[] = [];
+  if (song.suffix) parts.push(song.suffix.toUpperCase());
+  if (song.bitRate) parts.push(`${song.bitRate} kbps`);
+  return parts.join(' · ');
+}
+
+function StarRating({ value, onChange }: { value: number; onChange: (r: number) => void }) {
+  const [hover, setHover] = React.useState(0);
+  return (
+    <div className="star-rating">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button
+          key={n}
+          className={`star ${(hover || value) >= n ? 'filled' : ''}`}
+          onMouseEnter={() => setHover(n)}
+          onMouseLeave={() => setHover(0)}
+          onClick={() => onChange(n)}
+        >★</button>
+      ))}
+    </div>
+  );
+}
+
+export default function PlaylistDetail() {
+  const { id } = useParams<{ id: string }>();
+  const { t } = useTranslation();
+  const navigate = useNavigate();
+  const { playTrack, enqueue, openContextMenu, currentTrack, isPlaying } = usePlayerStore();
+  const touchPlaylist = usePlaylistStore((s) => s.touchPlaylist);
+  const { startDrag, isDragging } = useDragDrop();
+
+  const [playlist, setPlaylist] = useState<SubsonicPlaylist | null>(null);
+  const [songs, setSongs] = useState<SubsonicSong[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [ratings, setRatings] = useState<Record<string, number>>({});
+  const [starredSongs, setStarredSongs] = useState<Set<string>>(new Set());
+  const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
+  const [hoveredSuggestionId, setHoveredSuggestionId] = useState<string | null>(null);
+  const [contextMenuSongId, setContextMenuSongId] = useState<string | null>(null);
+  const contextMenuOpen = usePlayerStore(s => s.contextMenu.isOpen);
+
+  // ── 2×2 cover quad (first 4 unique album covers) ─────────────
+  const coverQuad = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    for (const s of songs) {
+      if (s.coverArt && !seen.has(s.coverArt)) {
+        seen.add(s.coverArt);
+        result.push(s.coverArt);
+        if (result.length === 4) break;
+      }
+    }
+    return result;
+  }, [songs]);
+
+  // One resolved URL for the blurred background (must be called unconditionally)
+  // useMemo is required here — buildCoverArtUrl generates a new salt on every call,
+  // which would change bgFetchUrl every render and cause useCachedUrl to re-fetch in a loop.
+  const bgFetchUrl = useMemo(() => buildCoverArtUrl(coverQuad[0] ?? '', 300), [coverQuad]);
+  const bgCacheKey = useMemo(() => coverArtCacheKey(coverQuad[0] ?? '', 300), [coverQuad]);
+  const resolvedBgUrl = useCachedUrl(bgFetchUrl, bgCacheKey);
+
+  // Song search
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<SubsonicSong[]>([]);
+  const [searching, setSearching] = useState(false);
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Suggestions
+  const [suggestions, setSuggestions] = useState<SubsonicSong[]>([]);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+
+  // DnD
+  const tracklistRef = useRef<HTMLDivElement>(null);
+  const [dropTargetIdx, setDropTargetIdx] = useState<{ idx: number; before: boolean } | null>(null);
+
+  useEffect(() => {
+    if (!contextMenuOpen) setContextMenuSongId(null);
+  }, [contextMenuOpen]);
+
+  // ── Load ─────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!id) return;
+    setLoading(true);
+    getPlaylist(id)
+      .then(({ playlist, songs }) => {
+        setPlaylist(playlist);
+        setSongs(songs);
+        const init: Record<string, number> = {};
+        const starred = new Set<string>();
+        songs.forEach(s => {
+          if (s.userRating) init[s.id] = s.userRating;
+          if (s.starred) starred.add(s.id);
+        });
+        setRatings(init);
+        setStarredSongs(starred);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [id]);
+
+  // ── Suggestions ───────────────────────────────────────────────
+  const loadSuggestions = useCallback(async (currentSongs: SubsonicSong[]) => {
+    const withArtist = currentSongs.filter(s => s.artistId);
+    if (!withArtist.length) return;
+    const pick = withArtist[Math.floor(Math.random() * withArtist.length)];
+    const existingIds = new Set(currentSongs.map(s => s.id));
+    setLoadingSuggestions(true);
+    setSuggestions([]);
+    try {
+      const similar = await getSimilarSongs2(pick.artistId!, 25);
+      setSuggestions(similar.filter(s => !existingIds.has(s.id)).slice(0, 10));
+    } catch {}
+    setLoadingSuggestions(false);
+  }, []);
+
+  useEffect(() => {
+    if (songs.length > 0) loadSuggestions(songs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playlist?.id]);
+
+  // ── Save ──────────────────────────────────────────────────────
+  const savePlaylist = useCallback(async (updatedSongs: SubsonicSong[]) => {
+    if (!id) return;
+    setSaving(true);
+    try {
+      await updatePlaylist(id, updatedSongs.map(s => s.id));
+      if (id) touchPlaylist(id);
+    } catch {}
+    setSaving(false);
+  }, [id, touchPlaylist]);
+
+  // ── Remove ────────────────────────────────────────────────────
+  const removeSong = (idx: number) => {
+    const next = songs.filter((_, i) => i !== idx);
+    setSongs(next);
+    savePlaylist(next);
+  };
+
+  // ── Add ───────────────────────────────────────────────────────
+  const addSong = (song: SubsonicSong) => {
+    if (songs.some(s => s.id === song.id)) return;
+    const next = [...songs, song];
+    setSongs(next);
+    savePlaylist(next);
+    setSuggestions(prev => prev.filter(s => s.id !== song.id));
+    setSearchResults(prev => prev.filter(s => s.id !== song.id));
+  };
+
+  // ── Rating / Star ─────────────────────────────────────────────
+  const handleRate = (songId: string, rating: number) => {
+    setRatings(prev => ({ ...prev, [songId]: rating }));
+    setRating(songId, rating).catch(() => {});
+  };
+
+  const handleToggleStar = (song: SubsonicSong, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const isStarred = starredSongs.has(song.id);
+    setStarredSongs(prev => {
+      const next = new Set(prev);
+      isStarred ? next.delete(song.id) : next.add(song.id);
+      return next;
+    });
+    (isStarred ? unstar(song.id, 'song') : star(song.id, 'song')).catch(() => {});
+  };
+
+  // ── Search ────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!searchOpen || !searchQuery.trim()) { setSearchResults([]); return; }
+    if (searchDebounce.current) clearTimeout(searchDebounce.current);
+    searchDebounce.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await search(searchQuery, { songCount: 20, artistCount: 0, albumCount: 0 });
+        const existingIds = new Set(songs.map(s => s.id));
+        setSearchResults(res.songs.filter(s => !existingIds.has(s.id)));
+      } catch {}
+      setSearching(false);
+    }, 350);
+    return () => { if (searchDebounce.current) clearTimeout(searchDebounce.current); };
+  }, [searchQuery, searchOpen, songs]);
+
+  // ── psy-drop DnD reordering ───────────────────────────────────
+  useEffect(() => {
+    const container = tracklistRef.current;
+    if (!container) return;
+
+    const onPsyDrop = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (!detail?.data) return;
+      let parsed: any;
+      try { parsed = JSON.parse(detail.data); } catch { return; }
+      if (parsed.type !== 'playlist_reorder') return;
+
+      setDropTargetIdx(null);
+
+      const fromIdx: number = parsed.index;
+
+      // Determine drop index from the event target row
+      const target = (e.target as HTMLElement).closest('[data-track-idx]');
+      let toIdx = songs.length;
+      if (target) {
+        const targetIdx = parseInt(target.getAttribute('data-track-idx') ?? '', 10);
+        const rect = target.getBoundingClientRect();
+        const cursorY = (e as CustomEvent & { clientY?: number }).clientY ?? (rect.top + rect.height / 2);
+        const before = cursorY < rect.top + rect.height / 2;
+        toIdx = before ? targetIdx : targetIdx + 1;
+      }
+
+      if (fromIdx === toIdx || fromIdx === toIdx - 1) return;
+
+      setSongs(prev => {
+        const next = [...prev];
+        const [moved] = next.splice(fromIdx, 1);
+        const insertAt = toIdx > fromIdx ? toIdx - 1 : toIdx;
+        next.splice(insertAt, 0, moved);
+        savePlaylist(next);
+        return next;
+      });
+    };
+
+    container.addEventListener('psy-drop', onPsyDrop);
+    return () => container.removeEventListener('psy-drop', onPsyDrop);
+  }, [songs, savePlaylist]);
+
+  // ── Row mousedown: threshold drag for reorder (from anywhere on the row) ──
+  const handleRowMouseDown = (e: React.MouseEvent, idx: number) => {
+    if (e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button, input')) return;
+    e.preventDefault();
+    const sx = e.clientX, sy = e.clientY;
+    const onMove = (me: MouseEvent) => {
+      if (Math.abs(me.clientX - sx) > 5 || Math.abs(me.clientY - sy) > 5) {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        startDrag(
+          { data: JSON.stringify({ type: 'playlist_reorder', index: idx }), label: songs[idx]?.title ?? '' },
+          me.clientX, me.clientY
+        );
+      }
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+  };
+
+  // ── Drag-over visual feedback ─────────────────────────────────
+  const handleRowMouseEnter = (idx: number, e: React.MouseEvent) => {
+    if (!isDragging) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const before = e.clientY < rect.top + rect.height / 2;
+    setDropTargetIdx({ idx, before });
+  };
+
+  // ── Render ────────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="content-body" style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
+        <div className="spinner" />
+      </div>
+    );
+  }
+
+  if (!playlist) {
+    return <div className="content-body"><div className="empty-state">{t('playlists.notFound')}</div></div>;
+  }
+
+  const existingIds = new Set(songs.map(s => s.id));
+
+  return (
+    <div className="content-body animate-fade-in">
+
+      {/* ── Hero ── */}
+      <div className="album-detail-header">
+        {resolvedBgUrl && (
+          <div className="album-detail-bg" style={{ backgroundImage: `url(${resolvedBgUrl})` }} aria-hidden="true" />
+        )}
+        <div className="album-detail-overlay" aria-hidden="true" />
+
+        <div className="album-detail-content">
+          <button className="btn btn-ghost album-detail-back" onClick={() => navigate('/playlists')}>
+            <ChevronLeft size={16} /> {t('playlists.title')}
+          </button>
+
+          <div className="album-detail-hero">
+            {/* 2×2 cover grid */}
+            <div className="playlist-cover-grid">
+              {Array.from({ length: 4 }, (_, i) => {
+                const coverId = coverQuad[i % Math.max(1, coverQuad.length)];
+                if (!coverId) {
+                  return <div key={i} className="playlist-cover-cell playlist-cover-cell--empty" />;
+                }
+                return (
+                  <CachedImage
+                    key={i}
+                    className="playlist-cover-cell"
+                    src={buildCoverArtUrl(coverId, 200)}
+                    cacheKey={coverArtCacheKey(coverId, 200)}
+                    alt=""
+                  />
+                );
+              })}
+            </div>
+
+            <div className="album-detail-meta">
+              <span className="badge album-detail-badge">{t('playlists.titleBadge')}</span>
+              <h1 className="album-detail-title">{playlist.name}</h1>
+              <div className="album-detail-info">
+                <span>{t('playlists.songs', { n: songs.length })}</span>
+                {songs.length > 0 && <span>· {totalDurationLabel(songs)}</span>}
+                {saving && <Loader2 size={12} className="spin-slow" style={{ display: 'inline', marginLeft: 4 }} />}
+              </div>
+              <div className="album-detail-actions">
+                <div className="album-detail-actions-primary">
+                  <button className="btn btn-primary" disabled={songs.length === 0} onClick={() => {
+                    if (!songs.length) return;
+                    touchPlaylist(id!);
+                    const tracks = songs.map(songToTrack);
+                    playTrack(tracks[0], tracks);
+                  }}>
+                    <Play size={16} fill="currentColor" /> {t('playlists.playAll')}
+                  </button>
+                  <button className="btn btn-surface" disabled={songs.length === 0} onClick={() => {
+                    if (!songs.length) return;
+                    touchPlaylist(id!);
+                    enqueue(songs.map(songToTrack));
+                  }}>
+                    <ListPlus size={16} /> {t('playlists.addToQueue')}
+                  </button>
+                </div>
+                <button
+                  className={`btn btn-ghost ${searchOpen ? 'active' : ''}`}
+                  onClick={() => { setSearchOpen(v => !v); setSearchQuery(''); setSearchResults([]); }}
+                >
+                  <Search size={16} /> {t('playlists.addSongs')}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Song search panel ── */}
+      {searchOpen && (
+        <div className="playlist-search-panel">
+          <div className="playlist-search-input-wrap">
+            <input
+              className="input"
+              placeholder={t('playlists.searchPlaceholder')}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              autoFocus
+            />
+            {searchQuery && (
+              <button className="live-search-clear" onClick={() => { setSearchQuery(''); setSearchResults([]); }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {searching && <div style={{ textAlign: 'center', padding: '0.75rem' }}><div className="spinner" /></div>}
+          {!searching && searchQuery && searchResults.length === 0 && (
+            <div className="empty-state" style={{ padding: '0.5rem 0' }}>{t('playlists.noResults')}</div>
+          )}
+          {searchResults.map(song => (
+            <div key={song.id} className="playlist-search-row">
+              <CachedImage src={buildCoverArtUrl(song.coverArt ?? '', 40)} cacheKey={coverArtCacheKey(song.coverArt ?? '', 40)} alt="" className="playlist-search-thumb" />
+              <div className="playlist-search-info">
+                <span className="playlist-search-title">{song.title}</span>
+                <span className="playlist-search-artist">{song.artist} · <span className="playlist-search-album">{song.album}</span></span>
+              </div>
+              <span className="playlist-search-duration">{formatDuration(song.duration ?? 0)}</span>
+              <button
+                className="playlist-search-add-btn"
+                data-tooltip={t('playlists.addSong')}
+                onClick={() => addSong(song)}
+              >
+                <Plus size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Tracklist ── */}
+      <div className="tracklist" ref={tracklistRef}>
+
+        {/* Header */}
+        <div className="tracklist-header tracklist-va tracklist-playlist">
+          <div className="col-center">#</div>
+          <div>{t('albumDetail.trackTitle')}</div>
+          <div>{t('albumDetail.trackArtist')}</div>
+          <div className="col-center">{t('albumDetail.trackFavorite')}</div>
+          <div className="col-center">{t('albumDetail.trackRating')}</div>
+          <div className="col-center">{t('albumDetail.trackDuration')}</div>
+          <div>{t('albumDetail.trackFormat')}</div>
+          <div />
+        </div>
+
+        {songs.length === 0 && (
+          <div className="empty-state" style={{ padding: '2rem 0' }}>{t('playlists.emptyPlaylist')}</div>
+        )}
+
+        {songs.map((song, idx) => (
+          <React.Fragment key={song.id + idx}>
+            {/* Drop indicator above row */}
+            {isDragging && dropTargetIdx?.idx === idx && dropTargetIdx.before && (
+              <div className="playlist-drop-indicator" />
+            )}
+
+            <div
+              data-track-idx={idx}
+              className={`track-row track-row-va tracklist-playlist${currentTrack?.id === song.id ? ' active' : ''}${contextMenuSongId === song.id ? ' context-active' : ''}`}
+              onMouseEnter={e => { setHoveredSongId(song.id); handleRowMouseEnter(idx, e); }}
+              onMouseLeave={() => setHoveredSongId(null)}
+              onMouseDown={e => handleRowMouseDown(e, idx)}
+              onDoubleClick={() => {
+                const tracks = songs.map(songToTrack);
+                playTrack(tracks[idx], tracks);
+              }}
+              onContextMenu={e => {
+                e.preventDefault();
+                setContextMenuSongId(song.id);
+                openContextMenu(e.clientX, e.clientY, songToTrack(song), 'album-song');
+              }}
+            >
+              {/* # — play on click, grip icon on hover */}
+              <div
+                className="track-num"
+                style={{ cursor: 'pointer', color: (hoveredSongId === song.id || currentTrack?.id === song.id) ? 'var(--accent)' : undefined }}
+                onClick={() => { const tracks = songs.map(songToTrack); playTrack(tracks[idx], tracks); }}
+              >
+                {hoveredSongId === song.id && currentTrack?.id !== song.id
+                  ? <GripVertical size={13} />
+                  : currentTrack?.id === song.id && isPlaying
+                    ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                    : currentTrack?.id === song.id
+                      ? <Play size={13} fill="currentColor" />
+                      : idx + 1}
+              </div>
+
+              {/* Title */}
+              <div className="track-info">
+                <span className="track-title">{song.title}</span>
+              </div>
+
+              {/* Artist */}
+              <div className="track-artist-cell">
+                <span className="track-artist">{song.artist}</span>
+              </div>
+
+              {/* Favorite */}
+              <div className="track-star-cell">
+                <button
+                  className="btn btn-ghost track-star-btn"
+                  onClick={e => handleToggleStar(song, e)}
+                  style={{ color: starredSongs.has(song.id) ? 'var(--color-star-active, var(--accent))' : 'var(--color-star-inactive, var(--text-muted))' }}
+                >
+                  <Star size={14} fill={starredSongs.has(song.id) ? 'currentColor' : 'none'} />
+                </button>
+              </div>
+
+              {/* Rating */}
+              <StarRating value={ratings[song.id] ?? song.userRating ?? 0} onChange={r => handleRate(song.id, r)} />
+
+              {/* Duration */}
+              <div className="track-duration">{formatDuration(song.duration ?? 0)}</div>
+
+              {/* Format */}
+              <div className="track-meta">
+                {(song.suffix || song.bitRate) && <span className="track-codec">{codecLabel(song)}</span>}
+              </div>
+
+              {/* Delete */}
+              <div className="playlist-row-delete-cell">
+                <button
+                  className="playlist-row-delete-btn"
+                  onClick={e => { e.stopPropagation(); removeSong(idx); }}
+                  data-tooltip={t('playlists.removeSong')}
+                  data-tooltip-pos="left"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+
+            {/* Drop indicator below last row or between rows */}
+            {isDragging && dropTargetIdx?.idx === idx && !dropTargetIdx.before && (
+              <div className="playlist-drop-indicator" />
+            )}
+          </React.Fragment>
+        ))}
+
+        {/* Total row */}
+        {songs.length > 0 && (
+          <div className="tracklist-total tracklist-va tracklist-playlist">
+            <span className="tracklist-total-label">{t('albumDetail.trackTotal')}</span>
+            <span className="tracklist-total-value">{formatDuration(songs.reduce((a, s) => a + (s.duration ?? 0), 0))}</span>
+          </div>
+        )}
+      </div>
+
+      {/* ── Suggestions ── */}
+      <div className="playlist-suggestions tracklist">
+        <div className="playlist-suggestions-header">
+          <h2 className="section-title" style={{ marginBottom: 0 }}>{t('playlists.suggestions')}</h2>
+          <button
+            className="btn btn-surface"
+            onClick={() => loadSuggestions(songs)}
+            disabled={loadingSuggestions || songs.length === 0}
+            data-tooltip={t('playlists.refreshSuggestions')}
+          >
+            <RefreshCw size={14} className={loadingSuggestions ? 'spin-slow' : ''} />
+            {t('playlists.refreshSuggestions')}
+          </button>
+        </div>
+
+        {!loadingSuggestions && suggestions.filter(s => !existingIds.has(s.id)).length === 0 && (
+          <div className="empty-state" style={{ padding: '1.5rem 0', fontSize: '0.85rem' }}>{t('playlists.noSuggestions')}</div>
+        )}
+
+        {suggestions.filter(s => !existingIds.has(s.id)).length > 0 && (
+          <>
+            <div className="tracklist-header tracklist-va tracklist-playlist" style={{ marginTop: 'var(--space-3)' }}>
+              <div className="col-center">#</div>
+              <div>{t('albumDetail.trackTitle')}</div>
+              <div>{t('albumDetail.trackArtist')}</div>
+              <div />
+              <div />
+              <div className="col-center">{t('albumDetail.trackDuration')}</div>
+              <div>{t('albumDetail.trackFormat')}</div>
+              <div />
+            </div>
+
+            {suggestions.filter(s => !existingIds.has(s.id)).map((song, idx) => (
+              <div
+                key={song.id}
+                className={`track-row track-row-va tracklist-playlist${contextMenuSongId === song.id ? ' context-active' : ''}`}
+                onMouseEnter={() => setHoveredSuggestionId(song.id)}
+                onMouseLeave={() => setHoveredSuggestionId(null)}
+                onDoubleClick={() => addSong(song)}
+                onContextMenu={e => {
+                  e.preventDefault();
+                  setContextMenuSongId(song.id);
+                  openContextMenu(e.clientX, e.clientY, songToTrack(song), 'album-song');
+                }}
+              >
+                <div className="track-num" style={{ color: 'var(--text-muted)' }}>
+                  {idx + 1}
+                </div>
+                <div className="track-info">
+                  <span className="track-title">{song.title}</span>
+                </div>
+                <div className="track-artist-cell">
+                  <span className="track-artist">{song.artist}</span>
+                </div>
+                {/* no star/rating for suggestions */}
+                <div />
+                <div />
+                <div className="track-duration">{formatDuration(song.duration ?? 0)}</div>
+                <div className="track-meta">
+                  {(song.suffix || song.bitRate) && <span className="track-codec">{codecLabel(song)}</span>}
+                </div>
+                <div className="playlist-row-delete-cell">
+                  <button
+                    className="playlist-row-delete-btn"
+                    style={{ color: hoveredSuggestionId === song.id ? 'var(--accent)' : undefined }}
+                    onClick={e => { e.stopPropagation(); addSong(song); }}
+                    data-tooltip={t('playlists.addSong')}
+                    data-tooltip-pos="left"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}

@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.24.0] - 2026-03-31
+
+### Added
+
+- **Playlist Management** *(requested by [@adirav02](https://github.com/adirav02))*: Full playlist management feature:
+  - **Playlists overview page** (`/playlists`): card grid showing all server playlists with cover collage, song count and duration. Inline "New Playlist" creation (Enter to confirm, Escape to cancel). Two-click delete confirmation directly on the card.
+  - **Playlist detail page** (`/playlists/:id`): hero area with 2×2 album cover collage and blurred background (matching Album Detail style), full tracklist with drag-and-drop reordering, star ratings, codec labels, per-row delete button, and context menu.
+  - **Song search**: "Add Songs" button opens an inline search panel with debounced server search, thumbnail, artist · album info, and a round add button (accent on hover). Duplicate songs already in the playlist are filtered from results.
+  - **Suggestions**: "Suggested Songs" section below the tracklist loads similar songs via `getSimilarSongs2` based on the first artist in the playlist. Refresh button to load a new batch. Same tracklist layout as search results.
+  - **Context menu — Add to Playlist**: "Add to Playlist" submenu available on all song/album/queue-item context menus. Playlists sorted by most recently used. "New Playlist" inline create at the top of the submenu. Submenu flips left when near the right viewport edge.
+  - **Sidebar**: Playlists navigation entry added between Favorites and Statistics.
+  - **Recently used playlist tracking**: `playlistStore` (persisted) tracks the last 50 used playlist IDs for the context menu sort order.
+
+### Fixed
+
+- **Resampling — first track played at native sample rate** *(reported by [@sorensiimSalling](https://github.com/sorensiimSalling))*: `current_sample_rate` was initialized to `44100`, causing every track to be resampled down to 44.1 kHz on playback start. Initializing to `0` disables resampling until the actual track rate is known.
+- **Resampling — no application-level resampling for any track**: `target_rate` in `audio_play` and `audio_chain_next` is now always `0`. Previously, tracks after the first were resampled to match the first track's sample rate. Rodio handles conversion to the output device rate internally; every track now plays at its native sample rate.
+- **Playlist hero background flickering**: The blurred hero background in Playlist Detail flickered on every render because `buildCoverArtUrl()` generates a new random salt on every call, causing `useCachedUrl` to re-trigger in a loop. The fetch URL and cache key are now `useMemo`-stabilised.
+- **Input focus double border**: The playlist name and song search inputs used a `search-input` class that had no CSS definition, falling back to browser defaults. The global `:focus-visible` rule then added a second outline on top of the browser's own focus ring. Switched to the `.input` class which sets `outline: none` and uses `border-color` + glow on focus.
+
+### Changed
+
+- **Playlist search panel**: Redesigned with `surface-2` background, `radius-lg`, slide-down open animation, 36 px thumbnails, artist · album subtitle line, and a round icon add-button (accent colour on hover) replacing the generic `btn-surface` button.
+
+---
+
 ## [1.23.0] - 2026-03-30
 
 ### Added

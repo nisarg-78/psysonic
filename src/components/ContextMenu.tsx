@@ -1,11 +1,12 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Play, ListPlus, Radio, Star, Download, ChevronRight, User, Disc3, Heart } from 'lucide-react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Play, ListPlus, Radio, Star, Download, ChevronRight, User, Disc3, Heart, ListMusic, Plus } from 'lucide-react';
 import { lastfmLoveTrack, lastfmUnloveTrack } from '../api/lastfm';
 import { usePlayerStore, Track, songToTrack } from '../store/playerStore';
-import { SubsonicAlbum, SubsonicArtist, star, unstar, getSimilarSongs2, getTopSongs, buildDownloadUrl, getAlbum } from '../api/subsonic';
+import { SubsonicAlbum, SubsonicArtist, star, unstar, getSimilarSongs2, getTopSongs, buildDownloadUrl, getAlbum, getPlaylists, getPlaylist, createPlaylist, updatePlaylist, SubsonicPlaylist } from '../api/subsonic';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useDownloadModalStore } from '../store/downloadModalStore';
+import { usePlaylistStore } from '../store/playlistStore';
 import { open } from '@tauri-apps/plugin-shell';
 import { writeFile } from '@tauri-apps/plugin-fs';
 import { join } from '@tauri-apps/api/path';
@@ -19,6 +20,144 @@ function sanitizeFilename(name: string): string {
     .substring(0, 200) || 'download';
 }
 
+// ── Add-to-Playlist submenu ───────────────────────────────────────
+function AddToPlaylistSubmenu({ songIds, onDone }: { songIds: string[]; onDone: () => void }) {
+  const { t } = useTranslation();
+  const subRef = useRef<HTMLDivElement>(null);
+  const newNameRef = useRef<HTMLInputElement>(null);
+  const [playlists, setPlaylists] = useState<SubsonicPlaylist[]>([]);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [flipLeft, setFlipLeft] = useState(false);
+  const touchPlaylist = usePlaylistStore((s) => s.touchPlaylist);
+  const recentIds = usePlaylistStore((s) => s.recentIds);
+
+  useEffect(() => {
+    getPlaylists().then((all) => {
+      const sorted = [...all].sort((a, b) => {
+        const ai = recentIds.indexOf(a.id);
+        const bi = recentIds.indexOf(b.id);
+        if (ai === -1 && bi === -1) return a.name.localeCompare(b.name);
+        if (ai === -1) return 1;
+        if (bi === -1) return -1;
+        return ai - bi;
+      });
+      setPlaylists(sorted);
+    }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Flip submenu left if it would overflow the right edge of the viewport
+  useLayoutEffect(() => {
+    if (subRef.current) {
+      const rect = subRef.current.getBoundingClientRect();
+      if (rect.right > window.innerWidth - 8) setFlipLeft(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (creating) newNameRef.current?.focus();
+  }, [creating]);
+
+  const handleAdd = async (pl: SubsonicPlaylist) => {
+    setAdding(pl.id);
+    try {
+      const { songs } = await getPlaylist(pl.id);
+      const existingIds = new Set(songs.map((s) => s.id));
+      const newIds = songIds.filter((id) => !existingIds.has(id));
+      if (newIds.length > 0) {
+        await updatePlaylist(pl.id, [...songs.map((s) => s.id), ...newIds]);
+      }
+      touchPlaylist(pl.id);
+    } catch {}
+    setAdding(null);
+    onDone();
+  };
+
+  const handleCreate = async () => {
+    const name = newName.trim() || t('playlists.unnamed');
+    try {
+      const pl = await createPlaylist(name, songIds);
+      if (pl?.id) touchPlaylist(pl.id);
+    } catch {}
+    onDone();
+  };
+
+  const subStyle: React.CSSProperties = flipLeft
+    ? { right: 'calc(100% + 4px)', left: 'auto' }
+    : { left: 'calc(100% + 4px)', right: 'auto' };
+
+  return (
+    <div className="context-submenu" ref={subRef} style={subStyle}>
+      {/* New Playlist row */}
+      {!creating ? (
+        <div
+          className="context-menu-item context-submenu-new"
+          onClick={e => { e.stopPropagation(); setCreating(true); }}
+        >
+          <Plus size={13} /> {t('playlists.newPlaylist')}
+        </div>
+      ) : (
+        <div className="context-submenu-create" onClick={e => e.stopPropagation()}>
+          <input
+            ref={newNameRef}
+            className="context-submenu-input"
+            placeholder={t('playlists.createName')}
+            value={newName}
+            onChange={e => setNewName(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === 'Enter') handleCreate();
+              if (e.key === 'Escape') { setCreating(false); setNewName(''); }
+            }}
+          />
+          <button className="context-submenu-create-btn" onClick={handleCreate}>
+            <Plus size={13} />
+          </button>
+        </div>
+      )}
+
+      <div className="context-menu-divider" />
+
+      {playlists.length === 0 && (
+        <div className="context-submenu-empty">{t('playlists.empty')}</div>
+      )}
+      {playlists.map((pl) => (
+        <div
+          key={pl.id}
+          className="context-menu-item"
+          onClick={() => handleAdd(pl)}
+          style={{ opacity: adding === pl.id ? 0.5 : 1, pointerEvents: adding ? 'none' : undefined }}
+        >
+          <ListMusic size={13} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{pl.name}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Same as AddToPlaylistSubmenu but resolves album songs first
+function AlbumToPlaylistSubmenu({ albumId, onDone }: { albumId: string; onDone: () => void }) {
+  const [resolvedIds, setResolvedIds] = useState<string[] | null>(null);
+
+  useEffect(() => {
+    getAlbum(albumId).then((data) => {
+      setResolvedIds(data.songs.map((s) => s.id));
+    }).catch(() => setResolvedIds([]));
+  }, [albumId]);
+
+  if (resolvedIds === null) {
+    return (
+      <div className="context-submenu" style={{ display: 'flex', justifyContent: 'center', padding: '0.75rem' }}>
+        <div className="spinner" style={{ width: 16, height: 16 }} />
+      </div>
+    );
+  }
+  if (resolvedIds.length === 0) return null;
+  return <AddToPlaylistSubmenu songIds={resolvedIds} onDone={onDone} />;
+}
+
 export default function ContextMenu() {
   const { t } = useTranslation();
   const { contextMenu, closeContextMenu, playTrack, enqueue, queue, currentTrack, removeTrack, lastfmLovedCache, setLastfmLovedForSong, starredOverrides, setStarredOverride } = usePlayerStore();
@@ -29,10 +168,14 @@ export default function ContextMenu() {
 
   // Adjusted coordinates to keep menu on screen
   const [coords, setCoords] = useState({ x: 0, y: 0 });
+  const [playlistSubmenuOpen, setPlaylistSubmenuOpen] = useState(false);
+  const [playlistSongIds, setPlaylistSongIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (contextMenu.isOpen) {
       setCoords({ x: contextMenu.x, y: contextMenu.y });
+      setPlaylistSubmenuOpen(false);
+      setPlaylistSongIds([]);
     }
   }, [contextMenu.isOpen, contextMenu.x, contextMenu.y]);
 
@@ -125,6 +268,17 @@ export default function ContextMenu() {
               <div className="context-menu-item" onClick={() => handleAction(() => enqueue([song]))}>
                 <ListPlus size={14} /> {t('contextMenu.addToQueue')}
               </div>
+              <div
+                className={`context-menu-item context-menu-item--submenu ${playlistSubmenuOpen && playlistSongIds[0] === song.id ? 'active' : ''}`}
+                onMouseEnter={() => { setPlaylistSongIds([song.id]); setPlaylistSubmenuOpen(true); }}
+                onMouseLeave={() => setPlaylistSubmenuOpen(false)}
+              >
+                <ListMusic size={14} /> {t('contextMenu.addToPlaylist')}
+                <ChevronRight size={13} style={{ marginLeft: 'auto' }} />
+                {playlistSubmenuOpen && playlistSongIds[0] === song.id && (
+                  <AddToPlaylistSubmenu songIds={[song.id]} onDone={() => { setPlaylistSubmenuOpen(false); closeContextMenu(); }} />
+                )}
+              </div>
              {type === 'album-song' && (
                  <div className="context-menu-item" onClick={() => handleAction(async () => {
                    const albumData = await getAlbum(song.albumId);
@@ -192,6 +346,17 @@ export default function ContextMenu() {
               <div className="context-menu-item" onClick={() => handleAction(() => downloadAlbum(album.name, album.id))}>
                 <Download size={14} /> {t('contextMenu.download')}
               </div>
+              <div
+                className={`context-menu-item context-menu-item--submenu ${playlistSubmenuOpen && playlistSongIds[0] === `album:${album.id}` ? 'active' : ''}`}
+                onMouseEnter={() => { setPlaylistSongIds([`album:${album.id}`]); setPlaylistSubmenuOpen(true); }}
+                onMouseLeave={() => setPlaylistSubmenuOpen(false)}
+              >
+                <ListMusic size={14} /> {t('contextMenu.addToPlaylist')}
+                <ChevronRight size={13} style={{ marginLeft: 'auto' }} />
+                {playlistSubmenuOpen && playlistSongIds[0] === `album:${album.id}` && (
+                  <AlbumToPlaylistSubmenu albumId={album.id} onDone={() => { setPlaylistSubmenuOpen(false); closeContextMenu(); }} />
+                )}
+              </div>
             </>
           );
         })()}
@@ -227,6 +392,17 @@ export default function ContextMenu() {
                 if (queueIndex !== undefined) removeTrack(queueIndex);
               })}>
                 {t('contextMenu.removeFromQueue')}
+              </div>
+              <div
+                className={`context-menu-item context-menu-item--submenu ${playlistSubmenuOpen && playlistSongIds[0] === song.id ? 'active' : ''}`}
+                onMouseEnter={() => { setPlaylistSongIds([song.id]); setPlaylistSubmenuOpen(true); }}
+                onMouseLeave={() => setPlaylistSubmenuOpen(false)}
+              >
+                <ListMusic size={14} /> {t('contextMenu.addToPlaylist')}
+                <ChevronRight size={13} style={{ marginLeft: 'auto' }} />
+                {playlistSubmenuOpen && playlistSongIds[0] === song.id && (
+                  <AddToPlaylistSubmenu songIds={[song.id]} onDone={() => { setPlaylistSubmenuOpen(false); closeContextMenu(); }} />
+                )}
               </div>
               <div className="context-menu-divider" />
               {song.albumId && (

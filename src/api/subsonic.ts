@@ -384,12 +384,13 @@ export async function getPlaylist(id: string): Promise<{ playlist: SubsonicPlayl
   return { playlist, songs: entry ?? [] };
 }
 
-export async function createPlaylist(name: string, songIds?: string[]): Promise<void> {
+export async function createPlaylist(name: string, songIds?: string[]): Promise<SubsonicPlaylist> {
   const params: Record<string, unknown> = { name };
   if (songIds && songIds.length > 0) {
     params.songId = songIds;
   }
-  await api('createPlaylist.view', params);
+  const data = await api<{ playlist: SubsonicPlaylist }>('createPlaylist.view', params);
+  return data.playlist;
 }
 
 export async function updatePlaylist(id: string, songIds: string[]): Promise<void> {

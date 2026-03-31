@@ -8,7 +8,7 @@ import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Disc3, Users, Music4, Radio, Settings, Heart, BarChart3, Shuffle,
-  PanelLeftClose, PanelLeft, HelpCircle, Dices, ArrowUpCircle, AudioLines, HardDriveDownload, Tags
+  PanelLeftClose, PanelLeft, HelpCircle, Dices, ArrowUpCircle, AudioLines, HardDriveDownload, Tags, ListMusic
 } from 'lucide-react';
 import PsysonicLogo from './PsysonicLogo';
 import PSmallLogo from './PSmallLogo';
@@ -22,6 +22,7 @@ const navItems = [
   { icon: Tags, labelKey: 'sidebar.genres', to: '/genres' },
   { icon: Shuffle, labelKey: 'sidebar.randomMix', to: '/random-mix' },
   { icon: Heart, labelKey: 'sidebar.favorites', to: '/favorites' },
+  { icon: ListMusic, labelKey: 'sidebar.playlists', to: '/playlists' },
 ];
 
 function isNewer(latest: string, current: string): boolean {

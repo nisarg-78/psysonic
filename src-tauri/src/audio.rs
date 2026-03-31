@@ -1148,7 +1148,9 @@ pub async fn audio_play(
     let done_flag = Arc::new(AtomicBool::new(false));
     // Reset sample counter for the new track.
     state.samples_played.store(0, Ordering::Relaxed);
-    let target_rate = state.current_sample_rate.load(Ordering::Relaxed);
+    // Always 0 — no application-level resampling. Rodio handles conversion to
+    // the output device rate internally; we let every track play at its native rate.
+    let target_rate: u32 = 0;
     // Extract format hint from URL for better symphonia probing.
     let format_hint = url.rsplit('.').next()
         .and_then(|ext| ext.split('?').next())
@@ -1343,7 +1345,8 @@ pub async fn audio_chain_preload(
     // Use a dedicated counter for the chained source — it will be swapped into
     // samples_played when the chained track becomes active.
     let chain_counter = Arc::new(AtomicU64::new(0));
-    let target_rate = state.current_sample_rate.load(Ordering::Relaxed);
+    // Always 0 — no application-level resampling (same as audio_play).
+    let target_rate: u32 = 0;
     let format_hint = url.rsplit('.').next()
         .and_then(|ext| ext.split('?').next())
         .map(|s| s.to_lowercase());
