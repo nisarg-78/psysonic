@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Play, ListPlus, Radio, Star, Download, ChevronRight, User, Disc3, Heart, ListMusic, Plus } from 'lucide-react';
+import { Play, ListPlus, Radio, Star, Download, ChevronRight, User, Disc3, Heart, ListMusic, Plus, Info } from 'lucide-react';
 import { lastfmLoveTrack, lastfmUnloveTrack } from '../api/lastfm';
 import { usePlayerStore, Track, songToTrack } from '../store/playerStore';
 import { SubsonicAlbum, SubsonicArtist, star, unstar, getSimilarSongs2, getTopSongs, buildDownloadUrl, getAlbum, getPlaylists, getPlaylist, createPlaylist, updatePlaylist, SubsonicPlaylist } from '../api/subsonic';
@@ -21,7 +21,7 @@ function sanitizeFilename(name: string): string {
 }
 
 // ── Add-to-Playlist submenu ───────────────────────────────────────
-function AddToPlaylistSubmenu({ songIds, onDone }: { songIds: string[]; onDone: () => void }) {
+export function AddToPlaylistSubmenu({ songIds, onDone, dropDown }: { songIds: string[]; onDone: () => void; dropDown?: boolean }) {
   const { t } = useTranslation();
   const subRef = useRef<HTMLDivElement>(null);
   const newNameRef = useRef<HTMLInputElement>(null);
@@ -84,9 +84,11 @@ function AddToPlaylistSubmenu({ songIds, onDone }: { songIds: string[]; onDone: 
     onDone();
   };
 
-  const subStyle: React.CSSProperties = flipLeft
-    ? { right: 'calc(100% + 4px)', left: 'auto' }
-    : { left: 'calc(100% + 4px)', right: 'auto' };
+  const subStyle: React.CSSProperties = dropDown
+    ? { top: 'calc(100% + 4px)', left: 0, right: 'auto' }
+    : flipLeft
+      ? { right: 'calc(100% + 4px)', left: 'auto' }
+      : { left: 'calc(100% + 4px)', right: 'auto' };
 
   return (
     <div className="context-submenu" ref={subRef} style={subStyle}>
@@ -160,7 +162,7 @@ function AlbumToPlaylistSubmenu({ albumId, onDone }: { albumId: string; onDone: 
 
 export default function ContextMenu() {
   const { t } = useTranslation();
-  const { contextMenu, closeContextMenu, playTrack, enqueue, queue, currentTrack, removeTrack, lastfmLovedCache, setLastfmLovedForSong, starredOverrides, setStarredOverride } = usePlayerStore();
+  const { contextMenu, closeContextMenu, playTrack, enqueue, queue, currentTrack, removeTrack, lastfmLovedCache, setLastfmLovedForSong, starredOverrides, setStarredOverride, openSongInfo } = usePlayerStore();
   const auth = useAuthStore();
   const requestDownloadFolder = useDownloadModalStore(s => s.requestFolder);
   const navigate = useNavigate();
@@ -320,6 +322,10 @@ export default function ContextMenu() {
                   </div>
                 );
               })()}
+              <div className="context-menu-divider" />
+              <div className="context-menu-item" onClick={() => handleAction(() => openSongInfo(song.id))}>
+                <Info size={14} /> {t('contextMenu.songInfo')}
+              </div>
             </>
           );
         })()}
@@ -435,6 +441,10 @@ export default function ContextMenu() {
               })()}
               <div className="context-menu-item" onClick={() => handleAction(() => startRadio(song.artist, song.artist))}>
                 <Radio size={14} /> {t('contextMenu.startRadio')}
+              </div>
+              <div className="context-menu-divider" />
+              <div className="context-menu-item" onClick={() => handleAction(() => openSongInfo(song.id))}>
+                <Info size={14} /> {t('contextMenu.songInfo')}
               </div>
             </>
           );

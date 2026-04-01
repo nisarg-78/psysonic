@@ -62,16 +62,25 @@ const FsBg = memo(function FsBg({ url }: { url: string }) {
 
   useEffect(() => {
     if (!url) return;
+    let cancelled = false;
     const id = counterRef.current++;
-    setLayers(prev => [...prev, { url, id, visible: false }]);
-    const t1 = setTimeout(() => {
-      setLayers(prev => prev.map(l => ({ ...l, visible: l.id === id })));
-    }, 20);
-    const t2 = setTimeout(() => {
-      setLayers(prev => prev.filter(l => l.id === id));
-    }, 800);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [url]); // eslint-disable-line react-hooks/exhaustive-deps
+    // Preload the image before starting the crossfade — prevents a blank flash
+    // between the old and new layer while the browser decodes the image.
+    const img = new Image();
+    img.onload = img.onerror = () => {
+      if (cancelled) return;
+      setLayers(prev => [...prev, { url, id, visible: false }]);
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        setLayers(prev => prev.map(l => ({ ...l, visible: l.id === id })));
+        setTimeout(() => {
+          if (!cancelled) setLayers(prev => prev.filter(l => l.id === id));
+        }, 800);
+      });
+    };
+    img.src = url;
+    return () => { cancelled = true; };
+  }, [url]);
 
   return (
     <>
@@ -158,8 +167,9 @@ export default function FullscreenPlayer({ onClose }: FullscreenPlayerProps) {
   // to prevent useCachedUrl from re-fetching on every progress re-render (100 ms).
   const coverUrl = useMemo(() => currentTrack?.coverArt ? buildCoverArtUrl(currentTrack.coverArt, 800) : '', [currentTrack?.coverArt]);
   const coverKey = useMemo(() => currentTrack?.coverArt ? coverArtCacheKey(currentTrack.coverArt, 800) : '', [currentTrack?.coverArt]);
-  // useCachedUrl must be called unconditionally (hook rules)
-  const resolvedCoverUrl = useCachedUrl(coverUrl, coverKey);
+  // No fetchUrl fallback for the background — we only want stable blob URLs
+  // to avoid a double crossfade (fetchUrl → blobUrl for the same image).
+  const resolvedCoverUrl = useCachedUrl(coverUrl, coverKey, false);
 
   // Fetch artist image for background — fall back to cover art if unavailable
   const [artistBgUrl, setArtistBgUrl] = useState<string>('');

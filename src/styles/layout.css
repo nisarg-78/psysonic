@@ -592,6 +592,11 @@
   height: 28px;
 }
 
+/* Star + Last.fm heart — visually separated from track title */
+.player-star-btn {
+  margin-left: var(--space-3);
+}
+
 .player-btn-primary {
   width: 46px;
   height: 46px;
@@ -617,8 +622,8 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  margin-left: 32px;
-  margin-right: 32px;
+  margin-left: 24px;
+  margin-right: 24px;
 }
 
 .player-waveform-wrap {

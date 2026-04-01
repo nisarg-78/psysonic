@@ -34,6 +34,7 @@ interface AuthState {
   crossfadeSecs: number;
   gaplessEnabled: boolean;
   minimizeToTray: boolean;
+  nowPlayingEnabled: boolean;
   showChangelogOnUpdate: boolean;
   lastSeenChangelogVersion: string;
 
@@ -66,6 +67,7 @@ interface AuthState {
   setCrossfadeSecs: (v: number) => void;
   setGaplessEnabled: (v: boolean) => void;
   setMinimizeToTray: (v: boolean) => void;
+  setNowPlayingEnabled: (v: boolean) => void;
   setShowChangelogOnUpdate: (v: boolean) => void;
   setLastSeenChangelogVersion: (v: string) => void;
   logout: () => void;
@@ -99,6 +101,7 @@ export const useAuthStore = create<AuthState>()(
       crossfadeSecs: 3,
       gaplessEnabled: false,
       minimizeToTray: false,
+      nowPlayingEnabled: false,
       showChangelogOnUpdate: true,
       lastSeenChangelogVersion: '',
       isLoggedIn: false,
@@ -164,6 +167,7 @@ export const useAuthStore = create<AuthState>()(
       setCrossfadeSecs: (v) => set({ crossfadeSecs: v }),
       setGaplessEnabled: (v) => set({ gaplessEnabled: v }),
       setMinimizeToTray: (v) => set({ minimizeToTray: v }),
+      setNowPlayingEnabled: (v) => set({ nowPlayingEnabled: v }),
       setShowChangelogOnUpdate: (v) => set({ showChangelogOnUpdate: v }),
       setLastSeenChangelogVersion: (v) => set({ lastSeenChangelogVersion: v }),
 

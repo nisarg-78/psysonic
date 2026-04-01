@@ -1,7 +1,8 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Track, usePlayerStore, songToTrack } from '../store/playerStore';
 import { Play, Music, Star, X, Trash2, Save, FolderOpen, Shuffle, Infinity, Waves, MicVocal, ListMusic, Check, ListPlus } from 'lucide-react';
-import { buildCoverArtUrl, getAlbum, getPlaylists, getPlaylist, createPlaylist, updatePlaylist, deletePlaylist, SubsonicPlaylist } from '../api/subsonic';
+import { buildCoverArtUrl, coverArtCacheKey, getAlbum, getPlaylists, getPlaylist, createPlaylist, updatePlaylist, deletePlaylist, SubsonicPlaylist } from '../api/subsonic';
+import { useCachedUrl } from './CachedImage';
 import { useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
@@ -159,10 +160,15 @@ export default function QueuePanel() {
   const queueIndex = usePlayerStore(s => s.queueIndex);
   const currentTrack = usePlayerStore(s => s.currentTrack);
   const currentTime = usePlayerStore(s => s.currentTime);
-  const currentCoverSrc = useMemo(
+  const currentCoverFetchUrl = useMemo(
     () => currentTrack?.coverArt ? buildCoverArtUrl(currentTrack.coverArt, 128) : '',
     [currentTrack?.coverArt]
   );
+  const currentCoverCacheKey = useMemo(
+    () => currentTrack?.coverArt ? coverArtCacheKey(currentTrack.coverArt, 128) : '',
+    [currentTrack?.coverArt]
+  );
+  const currentCoverSrc = useCachedUrl(currentCoverFetchUrl, currentCoverCacheKey);
   const isQueueVisible = usePlayerStore(s => s.isQueueVisible);
   const playTrack = usePlayerStore(s => s.playTrack);
   const toggleQueue = usePlayerStore(s => s.toggleQueue);
@@ -363,12 +369,20 @@ export default function QueuePanel() {
 
       {currentTrack && (
         <div className="queue-current-track">
-          {(currentTrack.genre || currentTrack.suffix || currentTrack.bitRate) && (
+          {(currentTrack.genre || currentTrack.suffix || currentTrack.bitRate || currentTrack.samplingRate || currentTrack.bitDepth) && (
             <div className="queue-current-tech">
               {[
                 currentTrack.genre,
                 currentTrack.suffix?.toUpperCase(),
                 currentTrack.bitRate ? `${currentTrack.bitRate} kbps` : undefined,
+                (() => {
+                  const bd = currentTrack.bitDepth;
+                  const sr = currentTrack.samplingRate ? `${currentTrack.samplingRate / 1000} kHz` : '';
+                  if (bd && sr) return `${bd}/${sr}`;
+                  if (bd) return `${bd}-bit`;
+                  if (sr) return sr;
+                  return undefined;
+                })(),
               ].filter(Boolean).join(' · ')}
             </div>
           )}

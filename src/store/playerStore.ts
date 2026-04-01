@@ -26,6 +26,8 @@ export interface Track {
   replayGainPeak?: number;
   starred?: string;
   genre?: string;
+  samplingRate?: number;
+  bitDepth?: number;
 }
 
 export function songToTrack(song: SubsonicSong): Track {
@@ -48,6 +50,8 @@ export function songToTrack(song: SubsonicSong): Track {
     replayGainPeak: song.replayGain?.trackPeak,
     starred: song.starred,
     genre: song.genre,
+    samplingRate: song.samplingRate,
+    bitDepth: song.bitDepth,
   };
 }
 
@@ -112,6 +116,10 @@ interface PlayerState {
   };
   openContextMenu: (x: number, y: number, item: any, type: 'song' | 'album' | 'artist' | 'queue-item' | 'album-song', queueIndex?: number) => void;
   closeContextMenu: () => void;
+
+  songInfoModal: { isOpen: boolean; songId: string | null };
+  openSongInfo: (songId: string) => void;
+  closeSongInfo: () => void;
 }
 
 // ─── Module-level playback primitives ─────────────────────────────────────────
@@ -294,8 +302,8 @@ function handleAudioTrackSwitched(duration: number) {
   });
 
   // Report Now Playing to Navidrome + Last.fm
-  reportNowPlaying(nextTrack.id);
-  const { scrobblingEnabled, lastfmSessionKey } = useAuthStore.getState();
+  const { nowPlayingEnabled, scrobblingEnabled, lastfmSessionKey } = useAuthStore.getState();
+  if (nowPlayingEnabled) reportNowPlaying(nextTrack.id);
   if (lastfmSessionKey) {
     if (scrobblingEnabled) lastfmUpdateNowPlaying(nextTrack, lastfmSessionKey);
     lastfmGetTrackLoved(nextTrack.title, nextTrack.artist, lastfmSessionKey).then(loved => {
@@ -439,6 +447,10 @@ export const usePlayerStore = create<PlayerState>()(
         contextMenu: { ...state.contextMenu, isOpen: false },
       })),
 
+      songInfoModal: { isOpen: false, songId: null },
+      openSongInfo: (songId) => set({ songInfoModal: { isOpen: true, songId } }),
+      closeSongInfo: () => set({ songInfoModal: { isOpen: false, songId: null } }),
+
       toggleQueue: () => set(state => ({ isQueueVisible: !state.isQueueVisible })),
       setQueueVisible: (v: boolean) => set({ isQueueVisible: v }),
       toggleFullscreen: () => set(state => ({ isFullscreenOpen: !state.isFullscreenOpen })),
@@ -558,8 +570,8 @@ export const usePlayerStore = create<PlayerState>()(
         });
 
         // Report Now Playing to Navidrome (for Live/getNowPlaying) + Last.fm
-        reportNowPlaying(track.id);
-        const { scrobblingEnabled: lfmEnabled, lastfmSessionKey: lfmKey } = useAuthStore.getState();
+        const { nowPlayingEnabled: npEnabled, scrobblingEnabled: lfmEnabled, lastfmSessionKey: lfmKey } = useAuthStore.getState();
+        if (npEnabled) reportNowPlaying(track.id);
         if (lfmKey) {
           if (lfmEnabled) lastfmUpdateNowPlaying(track, lfmKey);
           lastfmGetTrackLoved(track.title, track.artist, lfmKey).then(loved => {

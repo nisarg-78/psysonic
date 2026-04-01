@@ -112,9 +112,15 @@ const handleEnqueueAll = () => {
    };
 
    const handlePlaySong = (song: SubsonicSong) => {
-     const track = songToTrack(song);
-     if (!track.genre && album?.album.genre) track.genre = album.album.genre;
-     playTrack(track, [track]);
+     if (!album) return;
+     const albumGenre = album.album.genre;
+     const tracks = album.songs.map(s => {
+       const t = songToTrack(s);
+       if (!t.genre && albumGenre) t.genre = albumGenre;
+       return t;
+     });
+     const track = tracks.find(t => t.id === song.id) || songToTrack(song);
+     playTrack(track, tracks);
    };
 
   const handleRate = async (songId: string, rating: number) => {

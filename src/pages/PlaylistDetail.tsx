@@ -1,9 +1,10 @@
 import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Play, ListPlus, Trash2, Search, X, Loader2, Plus, GripVertical, Star, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Play, ListPlus, Trash2, Search, X, Loader2, Plus, GripVertical, Star, RefreshCw, Shuffle } from 'lucide-react';
+import { AddToPlaylistSubmenu } from '../components/ContextMenu';
 import {
   getPlaylist, updatePlaylist, search, setRating, star, unstar,
-  getSimilarSongs2, SubsonicPlaylist, SubsonicSong,
+  getRandomSongs, SubsonicPlaylist, SubsonicSong,
 } from '../api/subsonic';
 import { usePlayerStore, songToTrack } from '../store/playerStore';
 import { usePlaylistStore } from '../store/playlistStore';
@@ -67,6 +68,45 @@ export default function PlaylistDetail() {
   const [hoveredSuggestionId, setHoveredSuggestionId] = useState<string | null>(null);
   const [contextMenuSongId, setContextMenuSongId] = useState<string | null>(null);
   const contextMenuOpen = usePlayerStore(s => s.contextMenu.isOpen);
+
+  // ── Bulk select ───────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [lastSelectedIdx, setLastSelectedIdx] = useState<number | null>(null);
+  const [showBulkPlPicker, setShowBulkPlPicker] = useState(false);
+
+  const toggleSelect = (id: string, idx: number, shift: boolean) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (shift && lastSelectedIdx !== null) {
+        const from = Math.min(lastSelectedIdx, idx);
+        const to = Math.max(lastSelectedIdx, idx);
+        songs.slice(from, to + 1).forEach(s => next.add(s.id));
+      } else {
+        next.has(id) ? next.delete(id) : next.add(id);
+      }
+      return next;
+    });
+    setLastSelectedIdx(idx);
+  };
+
+  const allSelected = selectedIds.size === songs.length && songs.length > 0;
+  const toggleAll = () => setSelectedIds(allSelected ? new Set() : new Set(songs.map(s => s.id)));
+
+  const bulkRemove = () => {
+    const next = songs.filter(s => !selectedIds.has(s.id));
+    setSongs(next);
+    savePlaylist(next);
+    setSelectedIds(new Set());
+  };
+
+  useEffect(() => {
+    if (!showBulkPlPicker) return;
+    const handler = (e: MouseEvent) => {
+      if (!(e.target as HTMLElement).closest('.bulk-pl-picker-wrap')) setShowBulkPlPicker(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [showBulkPlPicker]);
 
   // ── 2×2 cover quad (first 4 unique album covers) ─────────────
   const coverQuad = useMemo(() => {
@@ -140,15 +180,21 @@ export default function PlaylistDetail() {
 
   // ── Suggestions ───────────────────────────────────────────────
   const loadSuggestions = useCallback(async (currentSongs: SubsonicSong[]) => {
-    const withArtist = currentSongs.filter(s => s.artistId);
-    if (!withArtist.length) return;
-    const pick = withArtist[Math.floor(Math.random() * withArtist.length)];
+    if (!currentSongs.length) return;
+    // Count genres across playlist songs, pick the most common one
+    const genreCounts: Record<string, number> = {};
+    for (const s of currentSongs) {
+      if (s.genre) genreCounts[s.genre] = (genreCounts[s.genre] ?? 0) + 1;
+    }
+    const genres = Object.entries(genreCounts).sort((a, b) => b[1] - a[1]);
+    // Fall back to no genre filter if none of the songs have genre tags
+    const genre = genres.length > 0 ? genres[Math.floor(Math.random() * Math.min(3, genres.length))][0] : undefined;
     const existingIds = new Set(currentSongs.map(s => s.id));
     setLoadingSuggestions(true);
     setSuggestions([]);
     try {
-      const similar = await getSimilarSongs2(pick.artistId!, 25);
-      setSuggestions(similar.filter(s => !existingIds.has(s.id)).slice(0, 10));
+      const random = await getRandomSongs(25, genre);
+      setSuggestions(random.filter(s => !existingIds.has(s.id)).slice(0, 10));
     } catch {}
     setLoadingSuggestions(false);
   }, []);
@@ -355,6 +401,19 @@ export default function PlaylistDetail() {
                   <button className="btn btn-surface" disabled={songs.length === 0} onClick={() => {
                     if (!songs.length) return;
                     touchPlaylist(id!);
+                    const tracks = songs.map(songToTrack);
+                    const shuffled = [...tracks];
+                    for (let i = shuffled.length - 1; i > 0; i--) {
+                      const j = Math.floor(Math.random() * (i + 1));
+                      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+                    }
+                    playTrack(shuffled[0], shuffled);
+                  }}>
+                    <Shuffle size={16} /> {t('playlists.shuffle', 'Shuffle')}
+                  </button>
+                  <button className="btn btn-surface" disabled={songs.length === 0} onClick={() => {
+                    if (!songs.length) return;
+                    touchPlaylist(id!);
                     enqueue(songs.map(songToTrack));
                   }}>
                     <ListPlus size={16} /> {t('playlists.addToQueue')}
@@ -416,9 +475,53 @@ export default function PlaylistDetail() {
       {/* ── Tracklist ── */}
       <div className="tracklist" ref={tracklistRef}>
 
+        {/* Bulk action bar */}
+        {selectedIds.size > 0 && (
+          <div className="bulk-action-bar">
+            <span className="bulk-action-count">
+              {t('common.bulkSelected', { count: selectedIds.size })}
+            </span>
+            <div className="bulk-pl-picker-wrap">
+              <button
+                className="btn btn-surface btn-sm"
+                onClick={() => setShowBulkPlPicker(v => !v)}
+              >
+                <ListPlus size={14} />
+                {t('common.bulkAddToPlaylist')}
+              </button>
+              {showBulkPlPicker && (
+                <AddToPlaylistSubmenu
+                  songIds={[...selectedIds]}
+                  onDone={() => { setShowBulkPlPicker(false); setSelectedIds(new Set()); }}
+                  dropDown
+                />
+              )}
+            </div>
+            <button
+              className="btn btn-surface btn-sm"
+              style={{ color: 'var(--danger)' }}
+              onClick={bulkRemove}
+            >
+              <Trash2 size={14} />
+              {t('common.bulkRemoveFromPlaylist')}
+            </button>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              <X size={13} />
+              {t('common.bulkClear')}
+            </button>
+          </div>
+        )}
+
         {/* Header */}
         <div className="tracklist-header tracklist-va tracklist-playlist">
-          <div className="col-center">#</div>
+          <div className="col-center" style={{ cursor: songs.length > 0 ? 'pointer' : undefined }} onClick={songs.length > 0 ? toggleAll : undefined}>
+            {selectedIds.size > 0
+              ? <span className={`bulk-check${allSelected ? ' checked' : ''}`} />
+              : '#'}
+          </div>
           <div>{t('albumDetail.trackTitle')}</div>
           <div>{t('albumDetail.trackArtist')}</div>
           <div className="col-center">{t('albumDetail.trackFavorite')}</div>
@@ -441,7 +544,7 @@ export default function PlaylistDetail() {
 
             <div
               data-track-idx={idx}
-              className={`track-row track-row-va tracklist-playlist${currentTrack?.id === song.id ? ' active' : ''}${contextMenuSongId === song.id ? ' context-active' : ''}`}
+              className={`track-row track-row-va tracklist-playlist${currentTrack?.id === song.id ? ' active' : ''}${contextMenuSongId === song.id ? ' context-active' : ''}${selectedIds.has(song.id) ? ' bulk-selected' : ''}`}
               onMouseEnter={e => { setHoveredSongId(song.id); handleRowMouseEnter(idx, e); }}
               onMouseLeave={() => setHoveredSongId(null)}
               onMouseDown={e => handleRowMouseDown(e, idx)}
@@ -449,26 +552,50 @@ export default function PlaylistDetail() {
                 const tracks = songs.map(songToTrack);
                 playTrack(tracks[idx], tracks);
               }}
+              onClick={e => {
+                if (selectedIds.size > 0 && !(e.target as HTMLElement).closest('button, input')) {
+                  toggleSelect(song.id, idx, e.shiftKey);
+                }
+              }}
               onContextMenu={e => {
                 e.preventDefault();
                 setContextMenuSongId(song.id);
                 openContextMenu(e.clientX, e.clientY, songToTrack(song), 'album-song');
               }}
             >
-              {/* # — play on click, grip icon on hover */}
-              <div
-                className="track-num"
-                style={{ cursor: 'pointer', color: (hoveredSongId === song.id || currentTrack?.id === song.id) ? 'var(--accent)' : undefined }}
-                onClick={() => { const tracks = songs.map(songToTrack); playTrack(tracks[idx], tracks); }}
-              >
-                {hoveredSongId === song.id && currentTrack?.id !== song.id
-                  ? <GripVertical size={13} />
-                  : currentTrack?.id === song.id && isPlaying
-                    ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
-                    : currentTrack?.id === song.id
-                      ? <Play size={13} fill="currentColor" />
-                      : idx + 1}
-              </div>
+              {/* # — checkbox in select mode, grip/play on hover otherwise */}
+              {(() => {
+                const inSelectMode = selectedIds.size > 0;
+                return (
+                  <div
+                    className="track-num"
+                    style={{ cursor: 'pointer' }}
+                    onClick={e => {
+                      e.stopPropagation();
+                      if (inSelectMode || hoveredSongId === song.id) {
+                        toggleSelect(song.id, idx, e.shiftKey);
+                      } else {
+                        const tracks = songs.map(songToTrack);
+                        playTrack(tracks[idx], tracks);
+                      }
+                    }}
+                  >
+                    <span
+                      className={`bulk-check${selectedIds.has(song.id) ? ' checked' : ''}${(inSelectMode || hoveredSongId === song.id) ? ' bulk-check-visible' : ''}`}
+                      onClick={e => { e.stopPropagation(); toggleSelect(song.id, idx, e.shiftKey); }}
+                    />
+                    <span style={{ color: (hoveredSongId === song.id || currentTrack?.id === song.id) ? 'var(--accent)' : 'var(--text-muted)' }}>
+                      {hoveredSongId === song.id && currentTrack?.id !== song.id && !inSelectMode
+                        ? <GripVertical size={13} />
+                        : currentTrack?.id === song.id && isPlaying
+                          ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                          : currentTrack?.id === song.id
+                            ? <Play size={13} fill="currentColor" />
+                            : idx + 1}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Title */}
               <div className="track-info">

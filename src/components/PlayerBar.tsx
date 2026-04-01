@@ -2,11 +2,11 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Music,
-  Square, Repeat, Repeat1, Maximize2, SlidersHorizontal, X, Heart, MicVocal
+  Square, Repeat, Repeat1, Maximize2, SlidersHorizontal, X, Heart, Star, MicVocal
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { useAuthStore } from '../store/authStore';
-import { buildCoverArtUrl, coverArtCacheKey } from '../api/subsonic';
+import { buildCoverArtUrl, coverArtCacheKey, star, unstar } from '../api/subsonic';
 import CachedImage from './CachedImage';
 import WaveformSeek from './WaveformSeek';
 import Equalizer from './Equalizer';
@@ -35,8 +35,25 @@ export default function PlayerBar() {
     stop, toggleRepeat, repeatMode, toggleFullscreen,
     lastfmLoved, toggleLastfmLove,
     isQueueVisible, toggleQueue,
+    starredOverrides, setStarredOverride,
   } = usePlayerStore();
   const { lastfmSessionKey } = useAuthStore();
+
+  const isStarred = currentTrack
+    ? (currentTrack.id in starredOverrides ? starredOverrides[currentTrack.id] : !!currentTrack.starred)
+    : false;
+
+  const toggleStar = useCallback(async () => {
+    if (!currentTrack) return;
+    const next = !isStarred;
+    setStarredOverride(currentTrack.id, next);
+    try {
+      if (next) await star(currentTrack.id, 'song');
+      else await unstar(currentTrack.id, 'song');
+    } catch {
+      setStarredOverride(currentTrack.id, !next);
+    }
+  }, [currentTrack, isStarred, setStarredOverride]);
 
   const duration = currentTrack?.duration ?? 0;
   const coverSrc = useMemo(() => currentTrack?.coverArt ? buildCoverArtUrl(currentTrack.coverArt, 128) : '', [currentTrack?.coverArt]);
@@ -92,6 +109,17 @@ export default function PlayerBar() {
             onClick={() => currentTrack?.artistId && navigate(`/artist/${currentTrack.artistId}`)}
           />
         </div>
+        {currentTrack && (
+          <button
+            className="player-btn player-btn-sm player-star-btn"
+            onClick={toggleStar}
+            aria-label={isStarred ? t('contextMenu.unfavorite') : t('contextMenu.favorite')}
+            data-tooltip={isStarred ? t('contextMenu.unfavorite') : t('contextMenu.favorite')}
+            style={{ color: isStarred ? 'var(--ctp-yellow)' : 'var(--text-muted)', flexShrink: 0 }}
+          >
+            <Star size={15} fill={isStarred ? 'var(--ctp-yellow)' : 'none'} />
+          </button>
+        )}
         {currentTrack && lastfmSessionKey && (
           <button
             className="player-btn player-btn-sm player-love-btn"

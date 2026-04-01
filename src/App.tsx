@@ -31,6 +31,7 @@ import PlaylistDetail from './pages/PlaylistDetail';
 import NowPlayingPage from './pages/NowPlaying';
 import FullscreenPlayer from './components/FullscreenPlayer';
 import ContextMenu from './components/ContextMenu';
+import SongInfoModal from './components/SongInfoModal';
 import DownloadFolderModal from './components/DownloadFolderModal';
 import { DragDropProvider } from './contexts/DragDropContext';
 import TooltipPortal from './components/TooltipPortal';
@@ -272,6 +273,7 @@ function AppShell() {
         <FullscreenPlayer onClose={toggleFullscreen} />
       )}
       <ContextMenu />
+      <SongInfoModal />
       <DownloadFolderModal />
       <TooltipPortal />
       {changelogModalOpen && <ChangelogModal onClose={() => setChangelogModalOpen(false)} />}

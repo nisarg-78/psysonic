@@ -74,6 +74,7 @@ export interface SubsonicSong {
   contentType?: string;
   size?: number;
   samplingRate?: number;
+  bitDepth?: number;
   channelCount?: number;
   starred?: string;
   genre?: string;
@@ -325,7 +326,7 @@ export async function reportNowPlaying(id: string): Promise<void> {
 }
 
 // ─── Stream URL ───────────────────────────────────────────────
-export function buildStreamUrl(id: string, suffix?: string): string {
+export function buildStreamUrl(id: string): string {
   const { getBaseUrl, getActiveServer } = useAuthStore.getState();
   const server = getActiveServer();
   const baseUrl = getBaseUrl();
@@ -336,10 +337,6 @@ export function buildStreamUrl(id: string, suffix?: string): string {
     u: server?.username ?? '',
     t: token, s: salt, v: '1.16.1', c: 'psysonic', f: 'json',
   });
-  
-  if (suffix === 'opus') {
-    p.set('format', 'flac'); // Transcode OPUS to FLAC since Rust/Symphonia has no Opus decoder
-  }
   
   return `${baseUrl}/rest/stream.view?${p.toString()}`;
 }

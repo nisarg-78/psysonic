@@ -980,6 +980,17 @@ export default function Settings() {
               <div className="settings-section-divider" />
               <div className="settings-toggle-row">
                 <div>
+                  <div style={{ fontWeight: 500 }}>{t('settings.nowPlayingEnabled')}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{t('settings.nowPlayingEnabledDesc')}</div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.nowPlayingEnabled')}>
+                  <input type="checkbox" checked={auth.nowPlayingEnabled} onChange={e => auth.setNowPlayingEnabled(e.target.checked)} />
+                  <span className="toggle-track" />
+                </label>
+              </div>
+              <div className="settings-section-divider" />
+              <div className="settings-toggle-row">
+                <div>
                   <div style={{ fontWeight: 500 }}>{t('settings.downloadsTitle')}</div>
                   <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, wordBreak: 'break-all' }}>
                     {auth.downloadFolder || t('settings.downloadsDefault')}
@@ -1138,10 +1149,10 @@ function renderInline(text: string): React.ReactNode[] {
   });
 }
 
-function SidebarGripHandle({ idx, label }: { idx: number; label: string }) {
+function SidebarGripHandle({ idx, section, label }: { idx: number; section: 'library' | 'system'; label: string }) {
   const { t } = useTranslation();
   const { onMouseDown } = useDragSource(() => ({
-    data: JSON.stringify({ type: 'sidebar_reorder', index: idx }),
+    data: JSON.stringify({ type: 'sidebar_reorder', index: idx, section }),
     label,
   }));
   return (
@@ -1156,67 +1167,101 @@ function SidebarGripHandle({ idx, label }: { idx: number; label: string }) {
   );
 }
 
+type DropTarget = { idx: number; before: boolean; section: 'library' | 'system' } | null;
+
 function SidebarCustomizer() {
   const { t } = useTranslation();
   const { items, setItems, toggleItem, reset } = useSidebarStore();
   const { isDragging: isPsyDragging } = useDragDrop();
-  const listRef = useRef<HTMLDivElement>(null);
-  const [dropTarget, setDropTarget] = useState<{ idx: number; before: boolean } | null>(null);
-  const dropTargetRef = useRef<{ idx: number; before: boolean } | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [dropTarget, setDropTarget] = useState<DropTarget>(null);
+  const dropTargetRef = useRef<DropTarget>(null);
   const itemsRef = useRef(items);
   itemsRef.current = items;
 
+  const libraryItems = items.filter(cfg => ALL_NAV_ITEMS[cfg.id]?.section === 'library');
+  const systemItems  = items.filter(cfg => ALL_NAV_ITEMS[cfg.id]?.section === 'system');
+
   useEffect(() => {
-    if (!isPsyDragging) {
-      dropTargetRef.current = null;
-      setDropTarget(null);
-    }
+    if (!isPsyDragging) { dropTargetRef.current = null; setDropTarget(null); }
   }, [isPsyDragging]);
 
   useEffect(() => {
-    const el = listRef.current;
+    const el = containerRef.current;
     if (!el) return;
     const onPsyDrop = (e: Event) => {
       const detail = (e as CustomEvent).detail;
       if (!detail?.data) return;
-      let parsed: { type?: string; index?: number };
+      let parsed: { type?: string; index?: number; section?: string };
       try { parsed = JSON.parse(detail.data); } catch { return; }
-      if (parsed.type !== 'sidebar_reorder' || parsed.index == null) return;
+      if (parsed.type !== 'sidebar_reorder' || parsed.index == null || !parsed.section) return;
 
       const fromIdx = parsed.index;
+      const fromSection = parsed.section as 'library' | 'system';
       const target = dropTargetRef.current;
-      dropTargetRef.current = null;
-      setDropTarget(null);
-      if (target === null) return;
+      dropTargetRef.current = null; setDropTarget(null);
+      if (!target || target.section !== fromSection) return;
 
+      const sectionItems = fromSection === 'library' ? [...libraryItems] : [...systemItems];
       const insertBefore = target.before ? target.idx : target.idx + 1;
       if (insertBefore === fromIdx || insertBefore === fromIdx + 1) return;
 
-      const next = [...itemsRef.current];
-      const [moved] = next.splice(fromIdx, 1);
-      const adjustedInsert = insertBefore > fromIdx ? insertBefore - 1 : insertBefore;
-      next.splice(adjustedInsert, 0, moved);
-      setItems(next);
+      const [moved] = sectionItems.splice(fromIdx, 1);
+      sectionItems.splice(insertBefore > fromIdx ? insertBefore - 1 : insertBefore, 0, moved);
+
+      // Merge reordered section back into flat items array
+      const all = [...itemsRef.current];
+      const positions = all.map((cfg, i) => ({ cfg, i }))
+        .filter(({ cfg }) => ALL_NAV_ITEMS[cfg.id]?.section === fromSection)
+        .map(({ i }) => i);
+      positions.forEach((pos, i) => { all[pos] = sectionItems[i]; });
+      setItems(all);
     };
     el.addEventListener('psy-drop', onPsyDrop);
     return () => el.removeEventListener('psy-drop', onPsyDrop);
-  }, [setItems]);
+  }, [libraryItems, systemItems, setItems]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
-    if (!isPsyDragging || !listRef.current) return;
-    const rows = listRef.current.querySelectorAll<HTMLElement>('[data-sidebar-idx]');
-    let target: { idx: number; before: boolean } | null = null;
+    if (!isPsyDragging || !containerRef.current) return;
+    const rows = containerRef.current.querySelectorAll<HTMLElement>('[data-sidebar-idx]');
+    let target: DropTarget = null;
     for (const row of rows) {
       const rect = row.getBoundingClientRect();
       const idx = Number(row.dataset.sidebarIdx);
-      if (e.clientY < rect.top + rect.height / 2) {
-        target = { idx, before: true };
-        break;
-      }
-      target = { idx, before: false };
+      const section = row.dataset.sidebarSection as 'library' | 'system';
+      if (e.clientY < rect.top + rect.height / 2) { target = { idx, before: true, section }; break; }
+      target = { idx, before: false, section };
     }
     dropTargetRef.current = target;
     setDropTarget(target);
+  };
+
+  const renderRow = (cfg: SidebarItemConfig, localIdx: number, section: 'library' | 'system') => {
+    const meta = ALL_NAV_ITEMS[cfg.id];
+    if (!meta) return null;
+    const Icon = meta.icon;
+    const isBefore = isPsyDragging && dropTarget?.section === section && dropTarget.idx === localIdx && dropTarget.before;
+    const isAfter  = isPsyDragging && dropTarget?.section === section && dropTarget.idx === localIdx && !dropTarget.before;
+    return (
+      <div
+        key={cfg.id}
+        data-sidebar-idx={localIdx}
+        data-sidebar-section={section}
+        className="sidebar-customizer-row"
+        style={{
+          borderTop:    isBefore ? '2px solid var(--accent)' : undefined,
+          borderBottom: isAfter  ? '2px solid var(--accent)' : undefined,
+        }}
+      >
+        <SidebarGripHandle idx={localIdx} section={section} label={t(meta.labelKey)} />
+        <Icon size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+        <span style={{ flex: 1, fontSize: 14 }}>{t(meta.labelKey)}</span>
+        <label className="toggle-switch" aria-label={t(meta.labelKey)}>
+          <input type="checkbox" checked={cfg.visible} onChange={() => toggleItem(cfg.id)} />
+          <span className="toggle-track" />
+        </label>
+      </div>
+    );
   };
 
   return (
@@ -1233,40 +1278,19 @@ function SidebarCustomizer() {
           <RotateCcw size={14} />
         </button>
       </div>
-      <div
-        className="settings-card"
-        style={{ padding: '4px 0' }}
-        ref={listRef}
-        onMouseMove={handleMouseMove}
-      >
-        {items.map((cfg, idx) => {
-          const meta = ALL_NAV_ITEMS[cfg.id];
-          if (!meta) return null;
-          const Icon = meta.icon;
-          const isBefore = isPsyDragging && dropTarget?.idx === idx && dropTarget.before;
-          const isAfter  = isPsyDragging && dropTarget?.idx === idx && !dropTarget.before;
-          return (
-            <div
-              key={cfg.id}
-              data-sidebar-idx={idx}
-              className="sidebar-customizer-row"
-              style={{
-                borderTop:    isBefore ? '2px solid var(--accent)' : undefined,
-                borderBottom: isAfter  ? '2px solid var(--accent)' : undefined,
-              }}
-            >
-              <SidebarGripHandle idx={idx} label={t(meta.labelKey)} />
-              <Icon size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-              <span style={{ flex: 1, fontSize: 14 }}>{t(meta.labelKey)}</span>
-              <label className="toggle-switch" aria-label={t(meta.labelKey)}>
-                <input type="checkbox" checked={cfg.visible} onChange={() => toggleItem(cfg.id)} />
-                <span className="toggle-track" />
-              </label>
-            </div>
-          );
-        })}
-        <div className="sidebar-customizer-fixed-hint">
-          <span>{t('settings.sidebarFixed')}: {t('sidebar.nowPlaying')}, {t('sidebar.settings')}</span>
+      <div ref={containerRef} onMouseMove={handleMouseMove} style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+        {/* Library block */}
+        <div className="settings-card" style={{ padding: '4px 0' }}>
+          <div className="sidebar-customizer-block-label">{t('sidebar.library')}</div>
+          {libraryItems.map((cfg, i) => renderRow(cfg, i, 'library'))}
+        </div>
+        {/* System block */}
+        <div className="settings-card" style={{ padding: '4px 0' }}>
+          <div className="sidebar-customizer-block-label">{t('sidebar.system')}</div>
+          {systemItems.map((cfg, i) => renderRow(cfg, i, 'system'))}
+          <div className="sidebar-customizer-fixed-hint">
+            <span>{t('settings.sidebarFixed')}: {t('sidebar.nowPlaying')}, {t('sidebar.settings')}</span>
+          </div>
         </div>
       </div>
     </section>

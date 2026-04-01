@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ListMusic, Play, Plus, X } from 'lucide-react';
+import { ListMusic, Play, Plus, Trash2, X } from 'lucide-react';
 import { getPlaylists, createPlaylist, deletePlaylist, SubsonicPlaylist, getPlaylist, buildCoverArtUrl, coverArtCacheKey } from '../api/subsonic';
 import { usePlayerStore, songToTrack } from '../store/playerStore';
 import { usePlaylistStore } from '../store/playlistStore';
@@ -172,7 +172,7 @@ export default function Playlists() {
                   data-tooltip={deleteConfirmId === pl.id ? t('playlists.confirmDelete') : t('playlists.deletePlaylist')}
                   data-tooltip-pos="bottom"
                 >
-                  <X size={12} />
+                  {deleteConfirmId === pl.id ? <Trash2 size={12} /> : <X size={12} />}
                 </button>
               </div>
 

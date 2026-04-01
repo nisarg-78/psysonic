@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.26.0] - 2026-04-01
+
+### Added
+
+- **Favorite button in Player Bar** *(requested by [@halfkey](https://github.com/halfkey))*: A star icon button now sits next to the Last.fm heart in the player bar. Clicking it toggles the favorite/unfavorite state for the currently playing track with an optimistic UI update — no page reload needed. Uses the same `starredOverrides` mechanism as the album tracklist for instant feedback.
+- **Bulk Select for song lists**: Multi-select support in Album tracklist and Playlist detail. A checkbox fades in to the left of the track number on hover. Selecting one or more tracks activates the bulk action bar at the top with two actions: **Add to Playlist** (opens the playlist picker submenu) and **Remove from Playlist** (Playlist detail only). Shift-click selects a range; the header checkbox selects / deselects all. CSS uses `color-mix` for the selection highlight, compatible with all 60 themes.
+- **Song Info modal**: Right-clicking any song and choosing "Song Info" opens a metadata panel fetched live via `getSong`. Displays: title, artist, album, album artist, year, genre, duration, track number; format, bitrate, sample rate, bit depth, channels (Mono / Stereo), file size; file path; and Replay Gain values (track / album gain + peak) when present. Closes with Escape or a click on the backdrop.
+- **Recently Played section on Home page**: A new "Recently Played" album row appears on the Home page between the hero carousel and the Discover section, powered by the `getAlbumList('recent')` endpoint.
+- **"Now Playing" visibility toggle in Settings**: New opt-in toggle in Settings → Behavior ("Show activity in Now Playing"). When disabled (default), `reportNowPlaying` is not called, so no activity is reported to the Navidrome "Now Playing" feed. Useful for users who share a server.
+
+### Fixed
+
+- **Queue cover art not updating**: After a track change the queue panel cover art often stayed on the previous album or took a long time to update. Root cause: `useCachedUrl` and `CachedImage` were not resetting their resolved URL when the `cacheKey` changed. Fixed by resetting `resolved` to `''` before each async cache fetch and basing `CachedImage`'s `loaded` state on `useEffect([cacheKey])` instead of a render-time comparison.
+- **Fullscreen Player background flickering**: The blurred background briefly showed a blank frame when switching tracks because the new image div was added to the DOM before the blob URL was ready. Fixed in `FsBg` by preloading the image via `new Image()` before inserting the layer, and using `useCachedUrl(..., false)` for the crossfade background so the raw URL is never used as a fallback during transitions.
+- **Playlist card delete confirmation not visible**: The confirm state only changed the icon colour, which was barely noticeable over the red button. Replaced with a size expansion (24 px → 30 px), an inset white ring, and a pulsing `delete-confirm-pulse` animation that alternates between two shades of red.
+- **Gruvbox Light Soft — back button and badge**: The album detail back-arrow and album badge were invisible against the warm light background. Added explicit colour overrides for `.album-detail-back` and `.album-detail-badge` in the gruvbox-light-soft theme.
+
+### Changed
+
+- **`buildStreamUrl` signature**: Removed the unused `suffix` parameter. Opus transcoding (`format=flac`) is now handled in `playerStore.playTrack` via `track.suffix` check, keeping the URL builder stateless.
+
+---
+
 ## [1.25.1] - 2026-04-01
 
 ### Fixed
