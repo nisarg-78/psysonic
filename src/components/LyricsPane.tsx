@@ -30,6 +30,8 @@ export default function LyricsPane({ currentTrack }: Props) {
 
   const hasSynced  = syncedLines !== null && syncedLines.length > 0;
   const currentTime = usePlayerStore(s => hasSynced ? s.currentTime : 0);
+  const seek = usePlayerStore(s => s.seek);
+  const duration = usePlayerStore(s => s.currentTrack?.duration ?? 0);
 
   const lineRefs   = useRef<(HTMLDivElement | null)[]>([]);
   const prevActive = useRef(-1);
@@ -103,27 +105,40 @@ export default function LyricsPane({ currentTrack }: Props) {
     );
   }
 
+  const getLyricLineClass = (i: number, active: number) => {
+    let className = 'lyrics-line'
+    if (i > active) return className
+    else if (i < active) return className + " completed"
+    else return className + " active";
+  }
+
   return (
     <div className="lyrics-pane">
-      {loading && <p className="lyrics-status">{t('player.lyricsLoading')}</p>}
-      {notFound && !loading && <p className="lyrics-status">{t('player.lyricsNotFound')}</p>}
+      {loading && <p className="lyrics-status">{t("player.lyricsLoading")}</p>}
+      {notFound && !loading && <p className="lyrics-status">{t("player.lyricsNotFound")}</p>}
       {hasSynced && (
         <div className="lyrics-synced">
           {syncedLines!.map((line, i) => (
             <div
               key={i}
-              ref={el => { lineRefs.current[i] = el; }}
-              className={`lyrics-line${i === activeIdx ? ' active' : ''}`}
+              ref={(el) => {
+                lineRefs.current[i] = el;
+              }}
+              className={getLyricLineClass(i, activeIdx)}
+              onClick={() => seek(line.time / duration)}
+              style={{ cursor: "pointer" }}
             >
-              {line.text || '\u00A0'}
+              {line.text || "\u00A0"}
             </div>
           ))}
         </div>
       )}
       {!hasSynced && plainLyrics && (
         <div className="lyrics-plain">
-          {plainLyrics.split('\n').map((line, i) => (
-            <p key={i} className="lyrics-plain-line">{line || '\u00A0'}</p>
+          {plainLyrics.split("\n").map((line, i) => (
+            <p key={i} className="lyrics-plain-line">
+              {line || "\u00A0"}
+            </p>
           ))}
         </div>
       )}
