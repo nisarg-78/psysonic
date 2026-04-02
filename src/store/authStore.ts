@@ -33,6 +33,7 @@ interface AuthState {
   crossfadeEnabled: boolean;
   crossfadeSecs: number;
   gaplessEnabled: boolean;
+  infiniteQueueEnabled: boolean;
   minimizeToTray: boolean;
   nowPlayingEnabled: boolean;
   showChangelogOnUpdate: boolean;
@@ -66,6 +67,7 @@ interface AuthState {
   setCrossfadeEnabled: (v: boolean) => void;
   setCrossfadeSecs: (v: number) => void;
   setGaplessEnabled: (v: boolean) => void;
+  setInfiniteQueueEnabled: (v: boolean) => void;
   setMinimizeToTray: (v: boolean) => void;
   setNowPlayingEnabled: (v: boolean) => void;
   setShowChangelogOnUpdate: (v: boolean) => void;
@@ -100,6 +102,7 @@ export const useAuthStore = create<AuthState>()(
       crossfadeEnabled: false,
       crossfadeSecs: 3,
       gaplessEnabled: false,
+      infiniteQueueEnabled: false,
       minimizeToTray: false,
       nowPlayingEnabled: false,
       showChangelogOnUpdate: true,
@@ -166,6 +169,7 @@ export const useAuthStore = create<AuthState>()(
       setCrossfadeEnabled: (v) => set({ crossfadeEnabled: v }),
       setCrossfadeSecs: (v) => set({ crossfadeSecs: v }),
       setGaplessEnabled: (v) => set({ gaplessEnabled: v }),
+      setInfiniteQueueEnabled: (v) => set({ infiniteQueueEnabled: v }),
       setMinimizeToTray: (v) => set({ minimizeToTray: v }),
       setNowPlayingEnabled: (v) => set({ nowPlayingEnabled: v }),
       setShowChangelogOnUpdate: (v) => set({ showChangelogOnUpdate: v }),

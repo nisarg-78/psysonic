@@ -17,6 +17,8 @@ export default function Favorites() {
   const [loading, setLoading] = useState(true);
 
   const { playTrack, enqueue } = usePlayerStore();
+  const currentTrack = usePlayerStore(s => s.currentTrack);
+  const isPlaying = usePlayerStore(s => s.isPlaying);
   const psyDrag = useDragDrop();
 
   function removeSong(id: string) {
@@ -105,7 +107,10 @@ export default function Favorites() {
                       key={song.id}
                       className="track-row track-row-va"
                       style={{ gridTemplateColumns: '40px 1fr 1fr 60px 32px' }}
-                      onDoubleClick={() => playTrack(track, songs.map(songToTrack))}
+                      onClick={e => {
+                        if ((e.target as HTMLElement).closest('button, a, input')) return;
+                        playTrack(track, songs.map(songToTrack));
+                      }}
                       onContextMenu={e => { e.preventDefault(); openContextMenu(e.clientX, e.clientY, track, 'song'); }}
                       role="row"
                       onMouseDown={e => {
@@ -124,8 +129,12 @@ export default function Favorites() {
                         document.addEventListener('mouseup', onUp);
                       }}
                     >
-                      <div className="track-num col-center" onClick={() => playTrack(track, songs.map(songToTrack))} style={{ cursor: 'pointer' }}>
-                        {i + 1}
+                      <div className="track-num col-center" style={{ cursor: 'pointer' }}>
+                        <span style={{ color: currentTrack?.id === song.id ? 'var(--accent)' : 'var(--text-muted)' }}>
+                          {currentTrack?.id === song.id && isPlaying
+                            ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                            : <Play size={13} fill="currentColor" />}
+                        </span>
                       </div>
                       <div className="track-info">
                         <span className="track-title">{song.title}</span>

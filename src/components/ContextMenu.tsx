@@ -207,16 +207,33 @@ export default function ContextMenu() {
     await action();
   };
 
-  const startRadio = async (artistId: string, artistName: string) => {
-    try {
-      const similar = await getSimilarSongs2(artistId);
-       if (similar.length > 0) {
-         const top = await getTopSongs(artistName);
-         const radioTracks = [...top, ...similar].map(songToTrack);
-         playTrack(radioTracks[0], radioTracks);
-       }
-    } catch (e) {
-      console.error('Failed to start radio', e);
+  const startRadio = async (artistId: string, artistName: string, seedTrack?: Track) => {
+    if (seedTrack) {
+      // Start playback immediately based on current state
+      const state = usePlayerStore.getState();
+      if (state.currentTrack?.id === seedTrack.id) {
+        if (!state.isPlaying) state.resume();
+        // Already playing this track — don't restart
+      } else {
+        playTrack(seedTrack, [seedTrack]);
+      }
+      // Load radio queue in background
+      try {
+        const [similar, top] = await Promise.all([getSimilarSongs2(artistId), getTopSongs(artistName)]);
+        const radioTracks = [...top, ...similar].map(songToTrack).filter(t => t.id !== seedTrack.id);
+        if (radioTracks.length > 0) enqueue(radioTracks);
+      } catch (e) {
+        console.error('Failed to load radio queue', e);
+      }
+    } else {
+      // Artist radio: no seed track, fetch in parallel and play when ready
+      try {
+        const [similar, top] = await Promise.all([getSimilarSongs2(artistId), getTopSongs(artistName)]);
+        const radioTracks = [...top, ...similar].map(songToTrack);
+        if (radioTracks.length > 0) playTrack(radioTracks[0], radioTracks);
+      } catch (e) {
+        console.error('Failed to start radio', e);
+      }
     }
   };
 
@@ -297,7 +314,7 @@ export default function ContextMenu() {
                   <Disc3 size={14} /> {t('contextMenu.openAlbum')}
                 </div>
               )}
-              <div className="context-menu-item" onClick={() => handleAction(() => startRadio(song.artistId ?? song.artist, song.artist))}>
+              <div className="context-menu-item" onClick={() => handleAction(() => startRadio(song.artistId ?? song.artist, song.artist, song))}>
                 <Radio size={14} /> {t('contextMenu.startRadio')}
               </div>
               <div className="context-menu-item" onClick={() => handleAction(() => {
@@ -440,7 +457,7 @@ export default function ContextMenu() {
                   </div>
                 );
               })()}
-              <div className="context-menu-item" onClick={() => handleAction(() => startRadio(song.artistId ?? song.artist, song.artist))}>
+              <div className="context-menu-item" onClick={() => handleAction(() => startRadio(song.artistId ?? song.artist, song.artist, song))}>
                 <Radio size={14} /> {t('contextMenu.startRadio')}
               </div>
               <div className="context-menu-divider" />

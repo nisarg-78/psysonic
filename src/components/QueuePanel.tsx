@@ -1,6 +1,6 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { Track, usePlayerStore, songToTrack } from '../store/playerStore';
-import { Play, Music, Star, X, Trash2, Save, FolderOpen, Shuffle, Infinity, Waves, MicVocal, ListMusic, Check, ListPlus } from 'lucide-react';
+import { Play, Music, Star, X, Trash2, Save, FolderOpen, Shuffle, Infinity, Waves, MicVocal, ListMusic, Check, ListPlus, Radio } from 'lucide-react';
 import { buildCoverArtUrl, coverArtCacheKey, getAlbum, getPlaylists, getPlaylist, createPlaylist, updatePlaylist, deletePlaylist, SubsonicPlaylist } from '../api/subsonic';
 import { useCachedUrl } from './CachedImage';
 import { useEffect } from 'react';
@@ -183,9 +183,11 @@ export default function QueuePanel() {
   const crossfadeEnabled = useAuthStore(s => s.crossfadeEnabled);
   const crossfadeSecs = useAuthStore(s => s.crossfadeSecs);
   const gaplessEnabled = useAuthStore(s => s.gaplessEnabled);
+  const infiniteQueueEnabled = useAuthStore(s => s.infiniteQueueEnabled);
   const setCrossfadeEnabled = useAuthStore(s => s.setCrossfadeEnabled);
   const setCrossfadeSecs = useAuthStore(s => s.setCrossfadeSecs);
   const setGaplessEnabled = useAuthStore(s => s.setGaplessEnabled);
+  const setInfiniteQueueEnabled = useAuthStore(s => s.setInfiniteQueueEnabled);
 
   const activeTab  = useLyricsStore(s => s.activeTab);
   const setTab     = useLyricsStore(s => s.setTab);
@@ -488,6 +490,14 @@ export default function QueuePanel() {
             </div>
           )}
         </div>
+        <button
+          className={`queue-round-btn${infiniteQueueEnabled ? ' active' : ''}`}
+          onClick={() => setInfiniteQueueEnabled(!infiniteQueueEnabled)}
+          data-tooltip={t('queue.infiniteQueue')}
+          aria-label={t('queue.infiniteQueue')}
+        >
+          <Radio size={13} />
+        </button>
       </div>
 
       {currentTrack && queue.length > 0 && <div className="queue-divider"><span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)' }}>{t('queue.nextTracks')}</span></div>}
@@ -500,6 +510,7 @@ export default function QueuePanel() {
         ) : (
           queue.map((track, idx) => {
             const isPlaying = idx === queueIndex;
+            const isFirstAutoAdded = track.autoAdded && (idx === 0 || !queue[idx - 1].autoAdded);
 
             let dragStyle: React.CSSProperties = {};
             if (isPsyDragging && psyDragFromIdxRef.current === idx) {
@@ -513,8 +524,13 @@ export default function QueuePanel() {
             }
 
             return (
+              <React.Fragment key={`${track.id}-${idx}`}>
+              {isFirstAutoAdded && (
+                <div className="queue-divider" style={{ margin: '2px 0' }}>
+                  <span style={{ fontSize: '11px', fontWeight: 500, color: 'var(--text-muted)' }}>{t('queue.autoAdded')}</span>
+                </div>
+              )}
               <div
-                key={`${track.id}-${idx}`}
                 data-queue-idx={idx}
                 className={`queue-item ${isPlaying ? 'active' : ''} ${contextMenu.isOpen && contextMenu.type === 'queue-item' && contextMenu.queueIndex === idx ? 'context-active' : ''}`}
                 onClick={() => playTrack(track, queue)}
@@ -555,6 +571,7 @@ export default function QueuePanel() {
                   {formatTime(track.duration)}
                 </div>
               </div>
+              </React.Fragment>
             );
           })
         )}

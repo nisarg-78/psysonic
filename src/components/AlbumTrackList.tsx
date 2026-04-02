@@ -68,7 +68,6 @@ export default function AlbumTrackList({
   onContextMenu,
 }: AlbumTrackListProps) {
   const { t } = useTranslation();
-  const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
   const [contextMenuSongId, setContextMenuSongId] = useState<string | null>(null);
   const contextMenuOpen = usePlayerStore(s => s.contextMenu.isOpen);
   const psyDrag = useDragDrop();
@@ -187,12 +186,12 @@ export default function AlbumTrackList({
               <div
                 key={song.id}
                 className={`track-row track-row-va${currentTrack?.id === song.id ? ' active' : ''}${contextMenuSongId === song.id ? ' context-active' : ''}${selectedIds.has(song.id) ? ' bulk-selected' : ''}`}
-                onMouseEnter={() => setHoveredSongId(song.id)}
-                onMouseLeave={() => setHoveredSongId(null)}
-                onDoubleClick={() => onPlaySong(song)}
                 onClick={e => {
-                  if (inSelectMode && !(e.target as HTMLElement).closest('button, input')) {
+                  if ((e.target as HTMLElement).closest('button, a, input')) return;
+                  if (inSelectMode) {
                     toggleSelect(song.id, globalIdx, e.shiftKey);
+                  } else {
+                    onPlaySong(song);
                   }
                 }}
                 onContextMenu={e => {
@@ -220,27 +219,16 @@ export default function AlbumTrackList({
                 <div
                   className="track-num"
                   style={{ cursor: 'pointer' }}
-                  onClick={e => {
-                    e.stopPropagation();
-                    if (inSelectMode || hoveredSongId === song.id) {
-                      toggleSelect(song.id, globalIdx, e.shiftKey);
-                    } else {
-                      onPlaySong(song);
-                    }
-                  }}
+                  onClick={e => { e.stopPropagation(); onPlaySong(song); }}
                 >
                   <span
-                    className={`bulk-check${selectedIds.has(song.id) ? ' checked' : ''}${(inSelectMode || hoveredSongId === song.id) ? ' bulk-check-visible' : ''}`}
+                    className={`bulk-check${selectedIds.has(song.id) ? ' checked' : ''}${inSelectMode ? ' bulk-check-visible' : ''}`}
                     onClick={e => { e.stopPropagation(); toggleSelect(song.id, globalIdx, e.shiftKey); }}
                   />
-                  <span style={{ color: (hoveredSongId === song.id || currentTrack?.id === song.id) ? 'var(--accent)' : 'var(--text-muted)' }}>
-                    {hoveredSongId === song.id && currentTrack?.id !== song.id && !inSelectMode
-                      ? <Play size={13} fill="currentColor" />
-                      : currentTrack?.id === song.id && isPlaying
-                        ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
-                        : currentTrack?.id === song.id
-                          ? <Play size={13} fill="currentColor" />
-                          : (song.track ?? globalIdx + 1)}
+                  <span style={{ color: currentTrack?.id === song.id ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {currentTrack?.id === song.id && isPlaying
+                      ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                      : <Play size={13} fill="currentColor" />}
                   </span>
                 </div>
                 <div className="track-info">

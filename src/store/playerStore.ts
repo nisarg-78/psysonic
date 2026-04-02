@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { buildStreamUrl, buildCoverArtUrl, getPlayQueue, savePlayQueue, reportNowPlaying, scrobbleSong, SubsonicSong, getSong } from '../api/subsonic';
+import { buildStreamUrl, buildCoverArtUrl, getPlayQueue, savePlayQueue, reportNowPlaying, scrobbleSong, SubsonicSong, getSong, getRandomSongs } from '../api/subsonic';
 import { lastfmScrobble, lastfmUpdateNowPlaying, lastfmLoveTrack, lastfmUnloveTrack, lastfmGetTrackLoved, lastfmGetAllLovedTracks } from '../api/lastfm';
 import { useAuthStore } from './authStore';
 import { useOfflineStore } from './offlineStore';
@@ -28,6 +28,7 @@ export interface Track {
   genre?: string;
   samplingRate?: number;
   bitDepth?: number;
+  autoAdded?: boolean;
 }
 
 export function songToTrack(song: SubsonicSong): Track {
@@ -671,16 +672,36 @@ export const usePlayerStore = create<PlayerState>()(
 
       // ── next / previous ──────────────────────────────────────────────────────
       next: () => {
-        const { queue, queueIndex, repeatMode } = get();
+        const { queue, queueIndex, repeatMode, currentTrack } = get();
         const nextIdx = queueIndex + 1;
         if (nextIdx < queue.length) {
           get().playTrack(queue[nextIdx], queue);
         } else if (repeatMode === 'all' && queue.length > 0) {
           get().playTrack(queue[0], queue);
         } else {
-          invoke('audio_stop').catch(console.error);
-          isAudioPaused = false;
-          set({ isPlaying: false, progress: 0, buffered: 0, currentTime: 0 });
+          const { infiniteQueueEnabled } = useAuthStore.getState();
+          if (infiniteQueueEnabled && repeatMode === 'off') {
+            getRandomSongs(25, currentTrack?.genre).then(songs => {
+              if (songs.length === 0) {
+                invoke('audio_stop').catch(console.error);
+                isAudioPaused = false;
+                set({ isPlaying: false, progress: 0, buffered: 0, currentTime: 0 });
+                return;
+              }
+              const newTracks: Track[] = songs.map(s => ({ ...songToTrack(s), autoAdded: true }));
+              const currentQueue = get().queue;
+              const newQueue = [...currentQueue, ...newTracks];
+              get().playTrack(newTracks[0], newQueue);
+            }).catch(() => {
+              invoke('audio_stop').catch(console.error);
+              isAudioPaused = false;
+              set({ isPlaying: false, progress: 0, buffered: 0, currentTime: 0 });
+            });
+          } else {
+            invoke('audio_stop').catch(console.error);
+            isAudioPaused = false;
+            set({ isPlaying: false, progress: 0, buffered: 0, currentTime: 0 });
+          }
         }
       },
 

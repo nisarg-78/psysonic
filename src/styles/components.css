@@ -1344,6 +1344,10 @@
   opacity: 1;
   pointer-events: auto;
 }
+.track-row:hover .track-num .bulk-check {
+  opacity: 1;
+  pointer-events: auto;
+}
 
 /* Equalizer bars — shown for the currently playing track */
 .eq-bars {

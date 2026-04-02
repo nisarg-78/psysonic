@@ -414,6 +414,25 @@ export default function Settings() {
                   <span className="toggle-track" />
                 </label>
               </div>
+
+              <div className="divider" />
+
+              {/* Infinite Queue */}
+              <div className="settings-toggle-row">
+                <div>
+                  <div style={{ fontWeight: 500 }}>
+                    {t('settings.infiniteQueue')}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                    {t('settings.infiniteQueueDesc')}
+                  </div>
+                </div>
+                <label className="toggle-switch" aria-label={t('settings.infiniteQueue')}>
+                  <input type="checkbox" checked={auth.infiniteQueueEnabled}
+                    onChange={e => auth.setInfiniteQueueEnabled(e.target.checked)} id="infinite-queue-toggle" />
+                  <span className="toggle-track" />
+                </label>
+              </div>
             </div>
           </section>
 

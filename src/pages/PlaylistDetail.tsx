@@ -64,7 +64,6 @@ export default function PlaylistDetail() {
   const [saving, setSaving] = useState(false);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [starredSongs, setStarredSongs] = useState<Set<string>>(new Set());
-  const [hoveredSongId, setHoveredSongId] = useState<string | null>(null);
   const [hoveredSuggestionId, setHoveredSuggestionId] = useState<string | null>(null);
   const [contextMenuSongId, setContextMenuSongId] = useState<string | null>(null);
   const contextMenuOpen = usePlayerStore(s => s.contextMenu.isOpen);
@@ -332,6 +331,10 @@ export default function PlaylistDetail() {
     document.addEventListener('mouseup', onUp);
   };
 
+  // ── Memoized derivations ──────────────────────────────────────
+  const existingIds = useMemo(() => new Set(songs.map(s => s.id)), [songs]);
+  const tracks = useMemo(() => songs.map(songToTrack), [songs]);
+
   // ── Drag-over visual feedback ─────────────────────────────────
   const handleRowMouseEnter = (idx: number, e: React.MouseEvent) => {
     if (!isDragging) return;
@@ -352,8 +355,6 @@ export default function PlaylistDetail() {
   if (!playlist) {
     return <div className="content-body"><div className="empty-state">{t('playlists.notFound')}</div></div>;
   }
-
-  const existingIds = new Set(songs.map(s => s.id));
 
   return (
     <div className="content-body animate-fade-in">
@@ -393,7 +394,6 @@ export default function PlaylistDetail() {
                   <button className="btn btn-primary" disabled={songs.length === 0} onClick={() => {
                     if (!songs.length) return;
                     touchPlaylist(id!);
-                    const tracks = songs.map(songToTrack);
                     playTrack(tracks[0], tracks);
                   }}>
                     <Play size={16} fill="currentColor" /> {t('playlists.playAll')}
@@ -401,7 +401,6 @@ export default function PlaylistDetail() {
                   <button className="btn btn-surface" disabled={songs.length === 0} onClick={() => {
                     if (!songs.length) return;
                     touchPlaylist(id!);
-                    const tracks = songs.map(songToTrack);
                     const shuffled = [...tracks];
                     for (let i = shuffled.length - 1; i > 0; i--) {
                       const j = Math.floor(Math.random() * (i + 1));
@@ -414,7 +413,7 @@ export default function PlaylistDetail() {
                   <button className="btn btn-surface" disabled={songs.length === 0} onClick={() => {
                     if (!songs.length) return;
                     touchPlaylist(id!);
-                    enqueue(songs.map(songToTrack));
+                    enqueue(tracks);
                   }}>
                     <ListPlus size={16} /> {t('playlists.addToQueue')}
                   </button>
@@ -453,20 +452,13 @@ export default function PlaylistDetail() {
             <div className="empty-state" style={{ padding: '0.5rem 0' }}>{t('playlists.noResults')}</div>
           )}
           {searchResults.map(song => (
-            <div key={song.id} className="playlist-search-row">
+            <div key={song.id} className="playlist-search-row" style={{ cursor: 'pointer' }} onClick={() => addSong(song)}>
               <CachedImage src={buildCoverArtUrl(song.coverArt ?? '', 40)} cacheKey={coverArtCacheKey(song.coverArt ?? '', 40)} alt="" className="playlist-search-thumb" />
               <div className="playlist-search-info">
                 <span className="playlist-search-title">{song.title}</span>
                 <span className="playlist-search-artist">{song.artist} · <span className="playlist-search-album">{song.album}</span></span>
               </div>
               <span className="playlist-search-duration">{formatDuration(song.duration ?? 0)}</span>
-              <button
-                className="playlist-search-add-btn"
-                data-tooltip={t('playlists.addSong')}
-                onClick={() => addSong(song)}
-              >
-                <Plus size={14} />
-              </button>
             </div>
           ))}
         </div>
@@ -532,7 +524,13 @@ export default function PlaylistDetail() {
         </div>
 
         {songs.length === 0 && (
-          <div className="empty-state" style={{ padding: '2rem 0' }}>{t('playlists.emptyPlaylist')}</div>
+          <div className="empty-state" style={{ padding: '2rem 0', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <span>{t('playlists.emptyPlaylist')}</span>
+            <button className="btn btn-primary" onClick={() => setSearchOpen(true)}>
+              <Search size={15} />
+              {t('playlists.addFirstSong')}
+            </button>
+          </div>
         )}
 
         {songs.map((song, idx) => (
@@ -545,16 +543,14 @@ export default function PlaylistDetail() {
             <div
               data-track-idx={idx}
               className={`track-row track-row-va tracklist-playlist${currentTrack?.id === song.id ? ' active' : ''}${contextMenuSongId === song.id ? ' context-active' : ''}${selectedIds.has(song.id) ? ' bulk-selected' : ''}`}
-              onMouseEnter={e => { setHoveredSongId(song.id); handleRowMouseEnter(idx, e); }}
-              onMouseLeave={() => setHoveredSongId(null)}
+              onMouseEnter={e => handleRowMouseEnter(idx, e)}
               onMouseDown={e => handleRowMouseDown(e, idx)}
-              onDoubleClick={() => {
-                const tracks = songs.map(songToTrack);
-                playTrack(tracks[idx], tracks);
-              }}
               onClick={e => {
-                if (selectedIds.size > 0 && !(e.target as HTMLElement).closest('button, input')) {
+                if ((e.target as HTMLElement).closest('button, a, input')) return;
+                if (selectedIds.size > 0) {
                   toggleSelect(song.id, idx, e.shiftKey);
+                } else {
+                  playTrack(tracks[idx], tracks);
                 }
               }}
               onContextMenu={e => {
@@ -563,7 +559,7 @@ export default function PlaylistDetail() {
                 openContextMenu(e.clientX, e.clientY, songToTrack(song), 'album-song');
               }}
             >
-              {/* # — checkbox in select mode, grip/play on hover otherwise */}
+              {/* # — checkbox in select mode, always-visible play button otherwise */}
               {(() => {
                 const inSelectMode = selectedIds.size > 0;
                 return (
@@ -572,26 +568,17 @@ export default function PlaylistDetail() {
                     style={{ cursor: 'pointer' }}
                     onClick={e => {
                       e.stopPropagation();
-                      if (inSelectMode || hoveredSongId === song.id) {
-                        toggleSelect(song.id, idx, e.shiftKey);
-                      } else {
-                        const tracks = songs.map(songToTrack);
-                        playTrack(tracks[idx], tracks);
-                      }
+                      playTrack(tracks[idx], tracks);
                     }}
                   >
                     <span
-                      className={`bulk-check${selectedIds.has(song.id) ? ' checked' : ''}${(inSelectMode || hoveredSongId === song.id) ? ' bulk-check-visible' : ''}`}
+                      className={`bulk-check${selectedIds.has(song.id) ? ' checked' : ''}${inSelectMode ? ' bulk-check-visible' : ''}`}
                       onClick={e => { e.stopPropagation(); toggleSelect(song.id, idx, e.shiftKey); }}
                     />
-                    <span style={{ color: (hoveredSongId === song.id || currentTrack?.id === song.id) ? 'var(--accent)' : 'var(--text-muted)' }}>
-                      {hoveredSongId === song.id && currentTrack?.id !== song.id && !inSelectMode
-                        ? <GripVertical size={13} />
-                        : currentTrack?.id === song.id && isPlaying
-                          ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
-                          : currentTrack?.id === song.id
-                            ? <Play size={13} fill="currentColor" />
-                            : idx + 1}
+                    <span style={{ color: currentTrack?.id === song.id ? 'var(--accent)' : 'var(--text-muted)' }}>
+                      {currentTrack?.id === song.id && isPlaying
+                        ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                        : <Play size={13} fill="currentColor" />}
                     </span>
                   </div>
                 );
@@ -696,7 +683,10 @@ export default function PlaylistDetail() {
                 className={`track-row track-row-va tracklist-playlist${contextMenuSongId === song.id ? ' context-active' : ''}`}
                 onMouseEnter={() => setHoveredSuggestionId(song.id)}
                 onMouseLeave={() => setHoveredSuggestionId(null)}
-                onDoubleClick={() => addSong(song)}
+                onClick={e => {
+                  if ((e.target as HTMLElement).closest('button, a, input')) return;
+                  addSong(song);
+                }}
                 onContextMenu={e => {
                   e.preventDefault();
                   setContextMenuSongId(song.id);

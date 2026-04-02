@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.28.0] - 2026-04-02
+
+### Added
+
+- **Infinite Queue** *(requested by [@netherguy4](https://github.com/netherguy4))*: When the queue runs out with Repeat off, Psysonic automatically appends 25 random tracks (optionally filtered by the last-played track's genre) so playback never stops. Toggle in Settings → Audio → "Infinite Queue". Auto-added tracks appear below a divider in the Queue panel.
+- **Start Radio plays immediately** *(requested by [@netherguy4](https://github.com/netherguy4))*: "Start Radio" from the song/queue context menu now starts the seed track instantly while similar and top tracks load in the background — no waiting for the fetch to complete before music plays.
+
+### Fixed
+
+- **Single-click to play everywhere** *(reported by [@netherguy4](https://github.com/netherguy4))*: Song rows in Album Detail, Playlist Detail, Artist Detail (Top Tracks), Favorites, and Random Mix previously required a double-click. All rows now play on a single click. The track-number cell and the full row are both click targets; buttons and links inside the row still work independently.
+- **Artist page Play All / Shuffle used Top Tracks only** *(reported by [@smirnoffjr](https://github.com/smirnoffjr))*: "Play All" and "Shuffle" on the Artist detail page only sent the loaded top songs to the queue, not the full discography. Now fetches all albums in parallel and plays songs in chronological album order with correct track-number ordering within each album. Buttons show a spinner while albums are loading.
+- **Last.fm icon clipped in player bar**: The Last.fm logo button in the player bar was cut off on the right side. Fixed by correcting the SVG `viewBox` from `0 0 24 24` to `0 0 26 22` to match the actual path extents.
+- **Playlist empty state UX** *(reported by [@netherguy4](https://github.com/netherguy4))*: Empty playlists (on creation, or after deleting all tracks) now show an "Add your first song" CTA button that opens the search panel directly, rather than a plain text message with no action.
+- **Playlist search rows required "+" button click** *(reported by [@netherguy4](https://github.com/netherguy4))*: Search result rows in the song search panel now add the song on a full-row click — the separate "+" button was redundant and easy to miss.
+- **Large playlist performance**: Playlists with hundreds of songs would freeze during mouse movement. Root cause: `hoveredSongId` state triggered a full React re-render of every row on every `mouseenter`/`mouseleave` event. Fixed by removing the JS hover state and replacing it with a CSS `.track-row:hover .bulk-check` rule. Also memoized `songs.map(songToTrack)` and the `existingIds` set to avoid recomputation per render. Same fix applied to `AlbumTrackList`.
+
+---
+
 ## [1.27.4] - 2026-04-02
 
 ### Added

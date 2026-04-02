@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, search, SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicArtistInfo, buildCoverArtUrl, coverArtCacheKey, star, unstar } from '../api/subsonic';
+import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, getAlbum, search, SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicArtistInfo, buildCoverArtUrl, coverArtCacheKey, star, unstar } from '../api/subsonic';
 import AlbumCard from '../components/AlbumCard';
 import CachedImage from '../components/CachedImage';
 import CoverLightbox from '../components/CoverLightbox';
@@ -46,6 +46,7 @@ export default function ArtistDetail() {
   const [info, setInfo] = useState<SubsonicArtistInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [radioLoading, setRadioLoading] = useState(false);
+  const [playAllLoading, setPlayAllLoading] = useState(false);
   const [isStarred, setIsStarred] = useState(false);
   const [openedLink, setOpenedLink] = useState<string | null>(null);
   const [similarArtists, setSimilarArtists] = useState<SubsonicArtist[]>([]);
@@ -57,6 +58,8 @@ export default function ArtistDetail() {
   const enqueue = usePlayerStore(state => state.enqueue);
   const clearQueue = usePlayerStore(state => state.clearQueue);
   const openContextMenu = usePlayerStore(state => state.openContextMenu);
+  const currentTrack = usePlayerStore(state => state.currentTrack);
+  const isPlaying = usePlayerStore(state => state.isPlaying);
 
   useEffect(() => {
     if (!id) return;
@@ -160,18 +163,34 @@ export default function ArtistDetail() {
     }
   };
 
-  const handlePlayAll = () => {
-    if (topSongs.length > 0) {
-      clearQueue();
-      playTrack(topSongs[0], topSongs);
+  const fetchAllTracks = async () => {
+    const results = await Promise.all(albums.map(a => getAlbum(a.id)));
+    const sorted = [...results].sort((a, b) => (a.album.year ?? 0) - (b.album.year ?? 0));
+    return sorted.flatMap(r => [...r.songs].sort((a, b) => (a.track ?? 0) - (b.track ?? 0))).map(songToTrack);
+  };
+
+  const handlePlayAll = async () => {
+    if (albums.length === 0) return;
+    setPlayAllLoading(true);
+    try {
+      const tracks = await fetchAllTracks();
+      if (tracks.length > 0) playTrack(tracks[0], tracks);
+    } finally {
+      setPlayAllLoading(false);
     }
   };
 
-  const handleShuffle = () => {
-    if (topSongs.length > 0) {
-      const shuffled = [...topSongs].sort(() => Math.random() - 0.5);
-      clearQueue();
-      playTrack(shuffled[0], shuffled);
+  const handleShuffle = async () => {
+    if (albums.length === 0) return;
+    setPlayAllLoading(true);
+    try {
+      const tracks = await fetchAllTracks();
+      if (tracks.length > 0) {
+        const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+        playTrack(shuffled[0], shuffled);
+      }
+    } finally {
+      setPlayAllLoading(false);
     }
   };
 
@@ -179,16 +198,33 @@ export default function ArtistDetail() {
     if (!artist) return;
     setRadioLoading(true);
     try {
-      const similar = await getSimilarSongs2(artist.id, 50);
-      if (similar.length > 0) {
-        clearQueue();
-        playTrack(similar[0], similar);
+      // Fire both fetches in parallel
+      const topPromise = getTopSongs(artist.name);
+      const similarPromise = getSimilarSongs2(artist.id, 50);
+
+      // Start playing as soon as top songs arrive
+      const top = await topPromise;
+      if (top.length > 0) {
+        const firstTrack = songToTrack(top[0]);
+        playTrack(firstTrack, [firstTrack]);
+        setRadioLoading(false);
+        // Enqueue remaining tracks when similar songs arrive
+        const similar = await similarPromise;
+        const remaining = [...top.slice(1), ...similar].map(songToTrack);
+        if (remaining.length > 0) enqueue(remaining);
       } else {
-        alert(t('artistDetail.noRadio'));
+        // No top songs — fall back to similar
+        const similar = await similarPromise;
+        if (similar.length > 0) {
+          const tracks = similar.map(songToTrack);
+          playTrack(tracks[0], tracks);
+        } else {
+          alert(t('artistDetail.noRadio'));
+        }
+        setRadioLoading(false);
       }
     } catch (e) {
       console.error('Radio start failed', e);
-    } finally {
       setRadioLoading(false);
     }
   };
@@ -289,13 +325,15 @@ export default function ArtistDetail() {
           </div>
 
           <div style={{ display: 'flex', gap: '8px', marginTop: '1.5rem', flexWrap: 'wrap' }}>
-            {topSongs.length > 0 && (
+            {albums.length > 0 && (
               <>
-                <button className="btn btn-primary" onClick={handlePlayAll}>
-                  <Play size={16} /> {t('artistDetail.playAll')}
+                <button className="btn btn-primary" onClick={handlePlayAll} disabled={playAllLoading}>
+                  {playAllLoading ? <div className="spinner" style={{ width: 16, height: 16, borderTopColor: 'currentColor' }} /> : <Play size={16} />}
+                  {t('artistDetail.playAll')}
                 </button>
-                <button className="btn btn-surface" onClick={handleShuffle}>
-                  <Shuffle size={16} /> {t('artistDetail.shuffle')}
+                <button className="btn btn-surface" onClick={handleShuffle} disabled={playAllLoading}>
+                  {playAllLoading ? <div className="spinner" style={{ width: 16, height: 16, borderTopColor: 'currentColor' }} /> : <Shuffle size={16} />}
+                  {t('artistDetail.shuffle')}
                 </button>
               </>
             )}
@@ -337,13 +375,22 @@ export default function ArtistDetail() {
                        key={song.id}
                        className="track-row"
                        style={{ gridTemplateColumns: '36px minmax(150px, 2fr) minmax(100px, 1fr) 60px' }}
-                       onDoubleClick={() => playTrack(track, topSongs.map(songToTrack))}
+                       onClick={e => {
+                         if ((e.target as HTMLElement).closest('button, a, input')) return;
+                         playTrack(track, topSongs.map(songToTrack));
+                       }}
                        onContextMenu={(e) => {
                          e.preventDefault();
                          openContextMenu(e.clientX, e.clientY, track, 'song');
                        }}
                      >
-                <div className="track-num" style={{ textAlign: 'center' }}>{idx + 1}</div>
+                <div className="track-num" style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); playTrack(track, topSongs.map(songToTrack)); }}>
+                  <span style={{ color: currentTrack?.id === song.id ? 'var(--accent)' : 'var(--text-muted)' }}>
+                    {currentTrack?.id === song.id && isPlaying
+                      ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                      : <Play size={13} fill="currentColor" />}
+                  </span>
+                </div>
                 <div className="track-info" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   {song.coverArt && (
                     <CachedImage
