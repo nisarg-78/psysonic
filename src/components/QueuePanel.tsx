@@ -153,13 +153,76 @@ function LoadPlaylistModal({ onClose, onLoad }: { onClose: () => void, onLoad: (
   );
 }
 
+function QueueHeader({
+  queue,
+  queueIndex,
+  showRemainingTime,
+  setShowRemainingTime,
+  activePlaylist,
+  t
+}: any) {
+  if (queue.length === 0) return null;
+  const currentTime = usePlayerStore(s => s.currentTime);
+
+  const totalSecs = queue.reduce((acc: number, t: any) => acc + (t.duration || 0), 0);
+
+  const remainingSecs = Math.max(
+    0,
+    (queue[queueIndex]?.duration ?? 0) - currentTime +
+    queue.slice(queueIndex + 1).reduce((acc: number, t: any) => acc + (t.duration || 0), 0)
+  );
+
+  const fmt = (secs: number) => {
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    const s = secs % 60;
+    return h > 0
+      ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
+      : `${m}:${s.toString().padStart(2, '0')}`;
+  };
+
+  const dur = showRemainingTime
+    ? `-${fmt(Math.floor(remainingSecs))}`
+    : fmt(Math.floor(totalSecs));
+
+  return (
+
+      <div className="queue-header">
+        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 }}>
+          <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0, flexShrink: 0 }}>{t('queue.title')}</h2>
+    <span
+      onClick={() => setShowRemainingTime((v: boolean) => !v)}
+      data-tooltip={showRemainingTime ? t('queue.showTotal') : t('queue.showRemaining')}
+      style={{
+        fontSize: '13px',
+        color: 'var(--accent)',
+        whiteSpace: 'nowrap',
+        cursor: 'pointer',
+        userSelect: 'none'
+      }}
+    >
+      {queue.length} {queue.length === 1 ? t('queue.trackSingular') : t('queue.trackPlural')} · {dur}
+    </span>
+        </div>
+        {activePlaylist && (
+          <div className="truncate" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <ListMusic size={10} style={{ flexShrink: 0 }} />
+            <span className="truncate">{activePlaylist.name}</span>
+          </div>
+        )}
+        </div>
+      </div>
+
+  );
+}
+
 export default function QueuePanel() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const queue = usePlayerStore(s => s.queue);
   const queueIndex = usePlayerStore(s => s.queueIndex);
   const currentTrack = usePlayerStore(s => s.currentTrack);
-  const currentTime = usePlayerStore(s => s.currentTime);
   const currentCoverFetchUrl = useMemo(
     () => currentTrack?.coverArt ? buildCoverArtUrl(currentTrack.coverArt, 128) : '',
     [currentTrack?.coverArt]
@@ -327,47 +390,10 @@ export default function QueuePanel() {
         }
       }}
       style={{
-        borderLeftWidth: isQueueVisible ? 1 : 0
+        borderLeftWidth: isQueueVisible ? 1 : 0,
       }}
     >
-      <div className="queue-header">
-        <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px', minWidth: 0 }}>
-          <h2 style={{ fontSize: '16px', fontWeight: 700, margin: 0, flexShrink: 0 }}>{t('queue.title')}</h2>
-          {queue.length > 0 && (() => {
-            const totalSecs = queue.reduce((acc, t) => acc + (t.duration || 0), 0);
-            const remainingSecs = Math.max(0,
-              (queue[queueIndex]?.duration ?? 0) - currentTime
-              + queue.slice(queueIndex + 1).reduce((acc, t) => acc + (t.duration || 0), 0)
-            );
-            const fmt = (secs: number) => {
-              const h = Math.floor(secs / 3600);
-              const m = Math.floor((secs % 3600) / 60);
-              const s = secs % 60;
-              return h > 0
-                ? `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`
-                : `${m}:${s.toString().padStart(2, '0')}`;
-            };
-            const dur = showRemainingTime ? `-${fmt(Math.floor(remainingSecs))}` : fmt(Math.floor(totalSecs));
-            return (
-              <span
-                onClick={() => setShowRemainingTime(v => !v)}
-                data-tooltip={showRemainingTime ? t('queue.showTotal') : t('queue.showRemaining')}
-                style={{ fontSize: '13px', color: 'var(--accent)', whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}
-              >
-                {queue.length} {queue.length === 1 ? t('queue.trackSingular') : t('queue.trackPlural')} · {dur}
-              </span>
-            );
-          })()}
-        </div>
-        {activePlaylist && (
-          <div className="truncate" style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <ListMusic size={10} style={{ flexShrink: 0 }} />
-            <span className="truncate">{activePlaylist.name}</span>
-          </div>
-        )}
-        </div>
-      </div>
+      <QueueHeader queue={queue} queueIndex={queueIndex} showRemainingTime={showRemainingTime} setShowRemainingTime={setShowRemainingTime} activePlaylist={activePlaylist} t={t} />
 
       {currentTrack && (
         <div className="queue-current-track">
