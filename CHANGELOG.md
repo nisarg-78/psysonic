@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Custom Offline Storage Directory (#95)**: You can now specify a custom directory for the offline library in Settings → Storage & Downloads. This is perfect for offloading your internal drive to an SD card or external HDD.
+- **Robust Volume Handling**: The app now automatically detects if a configured external storage medium is missing and provides a clear "Volume not found" notification instead of failing silently or attempting to download to a non-existent path.
 - **Internet Radio — full release**: The Radio page is now accessible from the sidebar. Complete UI rewrite to a card-based layout (cover art, name, edit/homepage buttons) consistent with the Playlists look. Covers can be uploaded or removed via a hover menu directly on the card.
 - **Internet Radio — Edit Modal**: A dedicated modal lets you change station name, stream URL, and homepage URL, and upload or remove cover art.
 - **Internet Radio — Radio Browser directory** *(via [radio-browser.info](https://www.radio-browser.info))*: Discover new stations directly inside Psysonic. Top stations by vote are shown as suggestions; a debounced search finds stations by name. Favicon images can be imported as cover art in one click.
