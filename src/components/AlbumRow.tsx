@@ -2,18 +2,19 @@ import React, { useRef, useState, useEffect } from 'react';
 import { SubsonicAlbum } from '../api/subsonic';
 import AlbumCard from './AlbumCard';
 import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
 interface Props {
   title: string;
+  titleLink?: string;
   albums: SubsonicAlbum[];
   moreLink?: string;
   moreText?: string;
   onLoadMore?: () => Promise<void>;
 }
 
-export default function AlbumRow({ title, albums, moreLink, moreText, onLoadMore }: Props) {
+export default function AlbumRow({ title, titleLink, albums, moreLink, moreText, onLoadMore }: Props) {
   const { t } = useTranslation();
   const scrollRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
@@ -61,7 +62,13 @@ export default function AlbumRow({ title, albums, moreLink, moreText, onLoadMore
   return (
     <section className="album-row-section">
       <div className="album-row-header">
-        <h2 className="section-title" style={{ marginBottom: 0 }}>{title}</h2>
+        {titleLink ? (
+          <NavLink to={titleLink} className="section-title-link" style={{ marginBottom: 0 }}>
+            {title}<ChevronRight size={18} className="section-title-chevron" />
+          </NavLink>
+        ) : (
+          <h2 className="section-title" style={{ marginBottom: 0 }}>{title}</h2>
+        )}
         <div className="album-row-nav">
           <button 
             className={`nav-btn ${!showLeft ? 'disabled' : ''}`} 

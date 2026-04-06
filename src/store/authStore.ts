@@ -26,6 +26,7 @@ interface AuthState {
   scrobblingEnabled: boolean;
   maxCacheMb: number;
   downloadFolder: string;
+  offlineDownloadDir: string;
   excludeAudiobooks: boolean;
   customGenreBlacklist: string[];
   replayGainEnabled: boolean;
@@ -33,8 +34,13 @@ interface AuthState {
   crossfadeEnabled: boolean;
   crossfadeSecs: number;
   gaplessEnabled: boolean;
+  preloadMode: 'balanced' | 'early' | 'custom';
+  preloadCustomSeconds: number;
   infiniteQueueEnabled: boolean;
+  showArtistImages: boolean;
+  showTrayIcon: boolean;
   minimizeToTray: boolean;
+  discordRichPresence: boolean;
   nowPlayingEnabled: boolean;
   showChangelogOnUpdate: boolean;
   lastSeenChangelogVersion: string;
@@ -60,6 +66,7 @@ interface AuthState {
   setScrobblingEnabled: (v: boolean) => void;
   setMaxCacheMb: (v: number) => void;
   setDownloadFolder: (v: string) => void;
+  setOfflineDownloadDir: (v: string) => void;
   setExcludeAudiobooks: (v: boolean) => void;
   setCustomGenreBlacklist: (v: string[]) => void;
   setReplayGainEnabled: (v: boolean) => void;
@@ -67,8 +74,13 @@ interface AuthState {
   setCrossfadeEnabled: (v: boolean) => void;
   setCrossfadeSecs: (v: number) => void;
   setGaplessEnabled: (v: boolean) => void;
+  setPreloadMode: (v: 'balanced' | 'early' | 'custom') => void;
+  setPreloadCustomSeconds: (v: number) => void;
   setInfiniteQueueEnabled: (v: boolean) => void;
+  setShowArtistImages: (v: boolean) => void;
+  setShowTrayIcon: (v: boolean) => void;
   setMinimizeToTray: (v: boolean) => void;
+  setDiscordRichPresence: (v: boolean) => void;
   setNowPlayingEnabled: (v: boolean) => void;
   setShowChangelogOnUpdate: (v: boolean) => void;
   setLastSeenChangelogVersion: (v: string) => void;
@@ -95,6 +107,7 @@ export const useAuthStore = create<AuthState>()(
       scrobblingEnabled: true,
       maxCacheMb: 500,
       downloadFolder: '',
+      offlineDownloadDir: '',
       excludeAudiobooks: false,
       customGenreBlacklist: [],
       replayGainEnabled: false,
@@ -102,8 +115,13 @@ export const useAuthStore = create<AuthState>()(
       crossfadeEnabled: false,
       crossfadeSecs: 3,
       gaplessEnabled: false,
+      preloadMode: 'balanced',
+      preloadCustomSeconds: 30,
       infiniteQueueEnabled: false,
+      showArtistImages: false,
+      showTrayIcon: true,
       minimizeToTray: false,
+      discordRichPresence: false,
       nowPlayingEnabled: false,
       showChangelogOnUpdate: true,
       lastSeenChangelogVersion: '',
@@ -156,6 +174,7 @@ export const useAuthStore = create<AuthState>()(
       setScrobblingEnabled: (v) => set({ scrobblingEnabled: v }),
       setMaxCacheMb: (v) => set({ maxCacheMb: v }),
       setDownloadFolder: (v) => set({ downloadFolder: v }),
+      setOfflineDownloadDir: (v) => set({ offlineDownloadDir: v }),
       setExcludeAudiobooks: (v) => set({ excludeAudiobooks: v }),
       setCustomGenreBlacklist: (v) => set({ customGenreBlacklist: v }),
       setReplayGainEnabled: (v) => {
@@ -169,8 +188,13 @@ export const useAuthStore = create<AuthState>()(
       setCrossfadeEnabled: (v) => set({ crossfadeEnabled: v }),
       setCrossfadeSecs: (v) => set({ crossfadeSecs: v }),
       setGaplessEnabled: (v) => set({ gaplessEnabled: v }),
+      setPreloadMode: (v: 'balanced' | 'early' | 'custom') => set({ preloadMode: v }),
+      setPreloadCustomSeconds: (v: number) => set({ preloadCustomSeconds: v }),
       setInfiniteQueueEnabled: (v) => set({ infiniteQueueEnabled: v }),
+      setShowArtistImages: (v) => set({ showArtistImages: v }),
+      setShowTrayIcon: (v) => set({ showTrayIcon: v }),
       setMinimizeToTray: (v) => set({ minimizeToTray: v }),
+      setDiscordRichPresence: (v) => set({ discordRichPresence: v }),
       setNowPlayingEnabled: (v) => set({ nowPlayingEnabled: v }),
       setShowChangelogOnUpdate: (v) => set({ showChangelogOnUpdate: v }),
       setLastSeenChangelogVersion: (v) => set({ lastSeenChangelogVersion: v }),

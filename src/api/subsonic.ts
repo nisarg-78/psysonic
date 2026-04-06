@@ -1,5 +1,6 @@
 import axios from 'axios';
 import md5 from 'md5';
+import { invoke } from '@tauri-apps/api/core';
 import { useAuthStore } from '../store/authStore';
 import { version } from '../../package.json';
 
@@ -88,6 +89,22 @@ export interface SubsonicSong {
   };
 }
 
+export interface InternetRadioStation {
+  id: string;
+  name: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  coverArt?: string; // Navidrome v0.61.0+
+}
+
+export interface RadioBrowserStation {
+  stationuuid: string;
+  name: string;
+  url: string;
+  favicon: string;
+  tags: string;
+}
+
 export interface SubsonicPlaylist {
   id: string;
   name: string;
@@ -97,6 +114,7 @@ export interface SubsonicPlaylist {
   changed: string;
   owner?: string;
   public?: boolean;
+  comment?: string;
   coverArt?: string;
 }
 
@@ -337,7 +355,6 @@ export function buildStreamUrl(id: string): string {
     u: server?.username ?? '',
     t: token, s: salt, v: '1.16.1', c: 'psysonic', f: 'json',
   });
-  
   return `${baseUrl}/rest/stream.view?${p.toString()}`;
 }
 
@@ -396,9 +413,61 @@ export async function createPlaylist(name: string, songIds?: string[]): Promise<
   return data.playlist;
 }
 
-export async function updatePlaylist(id: string, songIds: string[]): Promise<void> {
-  // createPlaylist with playlistId replaces the existing playlist's songs (Subsonic API 1.14+)
-  await api('createPlaylist.view', { playlistId: id, songId: songIds });
+export async function updatePlaylist(id: string, songIds: string[], prevCount = 0): Promise<void> {
+  if (songIds.length > 0) {
+    // createPlaylist with playlistId replaces the existing playlist's songs (Subsonic API 1.14+)
+    await api('createPlaylist.view', { playlistId: id, songId: songIds });
+  } else if (prevCount > 0) {
+    // Axios serialises empty arrays as no params — createPlaylist.view would leave songs unchanged.
+    // Use updatePlaylist.view with explicit index removal to clear the list instead.
+    await api('updatePlaylist.view', {
+      playlistId: id,
+      songIndexToRemove: Array.from({ length: prevCount }, (_, i) => i),
+    });
+  }
+}
+
+export async function updatePlaylistMeta(
+  id: string,
+  name: string,
+  comment: string,
+  isPublic: boolean,
+): Promise<void> {
+  await api('updatePlaylist.view', { playlistId: id, name, comment, public: isPublic });
+}
+
+export async function uploadPlaylistCoverArt(id: string, file: File): Promise<void> {
+  // Navidrome-specific endpoint — handled in Rust to bypass browser CORS restrictions.
+  const { getBaseUrl, getActiveServer } = useAuthStore.getState();
+  const server = getActiveServer();
+  const baseUrl = getBaseUrl();
+  const buffer = await file.arrayBuffer();
+  const fileBytes = Array.from(new Uint8Array(buffer));
+  await invoke('upload_playlist_cover', {
+    serverUrl: baseUrl,
+    playlistId: id,
+    username: server?.username ?? '',
+    password: server?.password ?? '',
+    fileBytes,
+    mimeType: file.type || 'image/jpeg',
+  });
+}
+
+export async function uploadArtistImage(id: string, file: File): Promise<void> {
+  // Navidrome-specific endpoint — handled in Rust to bypass browser CORS restrictions.
+  const { getBaseUrl, getActiveServer } = useAuthStore.getState();
+  const server = getActiveServer();
+  const baseUrl = getBaseUrl();
+  const buffer = await file.arrayBuffer();
+  const fileBytes = Array.from(new Uint8Array(buffer));
+  await invoke('upload_artist_image', {
+    serverUrl: baseUrl,
+    artistId: id,
+    username: server?.username ?? '',
+    password: server?.password ?? '',
+    fileBytes,
+    mimeType: file.type || 'image/jpeg',
+  });
 }
 
 export async function deletePlaylist(id: string): Promise<void> {
@@ -433,4 +502,107 @@ export async function getNowPlaying(): Promise<SubsonicNowPlaying[]> {
   } catch {
     return [];
   }
+}
+
+
+// ─── Internet Radio ───────────────────────────────────────────
+export async function getInternetRadioStations(): Promise<InternetRadioStation[]> {
+  try {
+    const data = await api<{ internetRadioStations?: { internetRadioStation?: InternetRadioStation[] } }>(
+      'getInternetRadioStations.view'
+    );
+    return data.internetRadioStations?.internetRadioStation ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function createInternetRadioStation(
+  name: string, streamUrl: string, homepageUrl?: string
+): Promise<void> {
+  const params: Record<string, unknown> = { name, streamUrl };
+  if (homepageUrl) params.homepageUrl = homepageUrl;
+  await api('createInternetRadioStation.view', params);
+}
+
+export async function updateInternetRadioStation(
+  id: string, name: string, streamUrl: string, homepageUrl?: string
+): Promise<void> {
+  const params: Record<string, unknown> = { id, name, streamUrl };
+  if (homepageUrl) params.homepageUrl = homepageUrl;
+  await api('updateInternetRadioStation.view', params);
+}
+
+export async function deleteInternetRadioStation(id: string): Promise<void> {
+  await api('deleteInternetRadioStation.view', { id });
+}
+
+export async function uploadRadioCoverArt(id: string, file: File): Promise<void> {
+  // Navidrome-specific endpoint — handled in Rust to bypass browser CORS restrictions.
+  const { getBaseUrl, getActiveServer } = useAuthStore.getState();
+  const server = getActiveServer();
+  const baseUrl = getBaseUrl();
+  const buffer = await file.arrayBuffer();
+  const fileBytes = Array.from(new Uint8Array(buffer));
+  await invoke('upload_radio_cover', {
+    serverUrl: baseUrl,
+    radioId: id,
+    username: server?.username ?? '',
+    password: server?.password ?? '',
+    fileBytes,
+    mimeType: file.type || 'image/jpeg',
+  });
+}
+
+export async function deleteRadioCoverArt(id: string): Promise<void> {
+  // Navidrome-specific endpoint — handled in Rust to bypass browser CORS restrictions.
+  const { getBaseUrl, getActiveServer } = useAuthStore.getState();
+  const server = getActiveServer();
+  const baseUrl = getBaseUrl();
+  await invoke('delete_radio_cover', {
+    serverUrl: baseUrl,
+    radioId: id,
+    username: server?.username ?? '',
+    password: server?.password ?? '',
+  });
+}
+
+export async function uploadRadioCoverArtBytes(id: string, fileBytes: number[], mimeType: string): Promise<void> {
+  const { getBaseUrl, getActiveServer } = useAuthStore.getState();
+  const server = getActiveServer();
+  const baseUrl = getBaseUrl();
+  await invoke('upload_radio_cover', {
+    serverUrl: baseUrl,
+    radioId: id,
+    username: server?.username ?? '',
+    password: server?.password ?? '',
+    fileBytes,
+    mimeType,
+  });
+}
+
+function parseRadioBrowserStations(raw: Array<Record<string, string>>): RadioBrowserStation[] {
+  return raw.map(s => ({
+    stationuuid: s.stationuuid ?? '',
+    name: s.name ?? '',
+    url: s.url ?? '',
+    favicon: s.favicon ?? '',
+    tags: s.tags ?? '',
+  }));
+}
+
+export const RADIO_PAGE_SIZE = 25;
+
+export async function searchRadioBrowser(query: string, offset = 0): Promise<RadioBrowserStation[]> {
+  const raw = await invoke<Array<Record<string, string>>>('search_radio_browser', { query, offset });
+  return parseRadioBrowserStations(raw);
+}
+
+export async function getTopRadioStations(offset = 0): Promise<RadioBrowserStation[]> {
+  const raw = await invoke<Array<Record<string, string>>>('get_top_radio_stations', { offset });
+  return parseRadioBrowserStations(raw);
+}
+
+export async function fetchUrlBytes(url: string): Promise<[number[], string]> {
+  return invoke<[number[], string]>('fetch_url_bytes', { url });
 }

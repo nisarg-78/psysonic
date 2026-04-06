@@ -8,6 +8,9 @@ import { PanelRight, PanelRightClose } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Sidebar from './components/Sidebar';
 import PlayerBar from './components/PlayerBar';
+import BottomNav from './components/BottomNav';
+import MobilePlayerView from './components/MobilePlayerView';
+import { useIsMobile } from './hooks/useIsMobile';
 import LiveSearch from './components/LiveSearch';
 import NowPlayingDropdown from './components/NowPlayingDropdown';
 import QueuePanel from './components/QueuePanel';
@@ -29,6 +32,7 @@ import SearchResults from './pages/SearchResults';
 import AdvancedSearch from './pages/AdvancedSearch';
 import Playlists from './pages/Playlists';
 import PlaylistDetail from './pages/PlaylistDetail';
+import InternetRadio from './pages/InternetRadio';
 import NowPlayingPage from './pages/NowPlaying';
 import FullscreenPlayer from './components/FullscreenPlayer';
 import ContextMenu from './components/ContextMenu';
@@ -65,6 +69,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 function AppShell() {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const isFullscreenOpen = usePlayerStore(s => s.isFullscreenOpen);
   const toggleFullscreen = usePlayerStore(s => s.toggleFullscreen);
   const isQueueVisible = usePlayerStore(s => s.isQueueVisible);
@@ -141,7 +146,7 @@ function AppShell() {
 
   const handleMouseMove = useCallback((e: MouseEvent) => {
     if (isDraggingQueue) {
-      const newWidth = Math.max(250, Math.min(window.innerWidth - e.clientX, 500));
+      const newWidth = Math.max(310, Math.min(window.innerWidth - e.clientX, 500));
       setQueueWidth(newWidth);
     }
   }, [isDraggingQueue]);
@@ -185,30 +190,58 @@ function AppShell() {
     // from the OS file manager) is dropped on the document body.
     const blockDrop = (e: DragEvent) => { e.preventDefault(); };
 
+    // Block Ctrl+A / Cmd+A "select all" — WebKit ignores user-select:none for keyboard shortcuts
+    const blockSelectAll = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'a') {
+        const target = e.target as HTMLElement;
+        // Allow Ctrl+A inside actual text inputs and textareas
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+        e.preventDefault();
+      }
+    };
+
+    // Block mouse drag selection — WebKitGTK ignores user-select:none on * for drag selection
+    const blockSelectStart = (e: Event) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+      if ((target as HTMLElement).closest('[data-selectable]')) return;
+      e.preventDefault();
+    };
+
     document.addEventListener('dragover', allow);
     document.addEventListener('dragenter', allow);
     document.addEventListener('drop', blockDrop);
+    document.addEventListener('keydown', blockSelectAll, true);
+    document.addEventListener('selectstart', blockSelectStart);
 
     return () => {
       document.removeEventListener('dragover', allow);
       document.removeEventListener('dragenter', allow);
       document.removeEventListener('drop', blockDrop);
+      document.removeEventListener('keydown', blockSelectAll, true);
+      document.removeEventListener('selectstart', blockSelectStart);
     };
   }, []);
+
+  const isMobilePlayer = isMobile && location.pathname === '/now-playing';
 
   return (
     <div 
       className="app-shell"
+      data-mobile={isMobile || undefined}
+      data-mobile-player={isMobilePlayer || undefined}
       style={{
-        '--sidebar-width': isSidebarCollapsed ? '72px' : 'clamp(200px, 15vw, 220px)',
-        '--queue-width': isQueueVisible ? `${queueWidth}px` : '0px'
+        '--sidebar-width': isMobile ? '0px' : (isSidebarCollapsed ? '72px' : 'clamp(200px, 15vw, 220px)'),
+        '--queue-width': isMobile ? '0px' : (isQueueVisible ? `${queueWidth}px` : '0px')
       } as React.CSSProperties}
       onContextMenu={e => e.preventDefault()}
     >
-      <Sidebar
-        isCollapsed={isSidebarCollapsed}
-        toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
+      {!isMobile && (
+        <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+      )}
       <main className="main-content">
         <header className="content-header">
           <LiveSearch />
@@ -250,7 +283,7 @@ function AppShell() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/search/advanced" element={<AdvancedSearch />} />
             <Route path="/statistics" element={<Statistics />} />
-            <Route path="/now-playing" element={<NowPlayingPage />} />
+            <Route path="/now-playing" element={isMobile ? <MobilePlayerView /> : <NowPlayingPage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/help" element={<Help />} />
             <Route path="/offline" element={<OfflineLibrary />} />
@@ -258,19 +291,23 @@ function AppShell() {
             <Route path="/genres/:name" element={<GenreDetail />} />
             <Route path="/playlists" element={<Playlists />} />
             <Route path="/playlists/:id" element={<PlaylistDetail />} />
+            <Route path="/radio" element={<InternetRadio />} />
           </Routes>
         </div>
       </main>
-      <div 
-        className="resizer resizer-queue" 
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setIsDraggingQueue(true);
-        }}
-        style={{ display: isQueueVisible ? 'block' : 'none' }}
-      />
-      <QueuePanel />
-      <PlayerBar />
+      {!isMobile && (
+        <div 
+          className="resizer resizer-queue" 
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsDraggingQueue(true);
+          }}
+          style={{ display: isQueueVisible ? 'block' : 'none' }}
+        />
+      )}
+      {!isMobile && <QueuePanel />}
+      {isMobile && !isMobilePlayer && <BottomNav />}
+      {!isMobilePlayer && <PlayerBar />}
       {isFullscreenOpen && (
         <FullscreenPlayer onClose={toggleFullscreen} />
       )}
@@ -289,6 +326,13 @@ function TauriEventBridge() {
   const togglePlay = usePlayerStore(s => s.togglePlay);
   const next = usePlayerStore(s => s.next);
   const previous = usePlayerStore(s => s.previous);
+
+  // Sync tray-icon visibility with the user's stored setting.
+  // Runs once on mount (initial sync) and again whenever the setting changes.
+  const showTrayIcon = useAuthStore(s => s.showTrayIcon);
+  useEffect(() => {
+    invoke('toggle_tray_icon', { show: showTrayIcon }).catch(console.error);
+  }, [showTrayIcon]);
 
   // Configurable keybindings
   useEffect(() => {

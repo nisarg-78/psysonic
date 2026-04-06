@@ -2,19 +2,25 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio;
+mod discord;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::atomic::Ordering;
 
 use tauri::{
     menu::{MenuBuilder, MenuItemBuilder, PredefinedMenuItem},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
+    tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     Emitter, Manager,
 };
 
 /// Tracks which user-configured shortcuts are currently registered (shortcut_str → action).
 /// Prevents on_shortcut() accumulating duplicate handlers across JS reloads (HMR / StrictMode).
 type ShortcutMap = Mutex<HashMap<String, String>>;
+
+/// Holds the live system-tray icon handle.  `None` means the tray is currently hidden/removed.
+/// Dropping the inner `TrayIcon` fully removes it from the OS notification area on all platforms.
+type TrayState = Mutex<Option<TrayIcon>>;
 
 /// Shared handle to OS media controls (MPRIS2 on Linux, Now Playing on macOS, SMTC on Windows).
 /// `None` if souvlaki failed to initialize (e.g. no D-Bus session on Linux).
@@ -72,6 +78,197 @@ fn relaunch_after_update(app: tauri::AppHandle) {
     }
 
     app.exit(0);
+}
+
+/// Authenticate with Navidrome's own REST API and return a Bearer token.
+async fn navidrome_token(server_url: &str, username: &str, password: &str) -> Result<String, String> {
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(format!("{}/auth/login", server_url))
+        .json(&serde_json::json!({ "username": username, "password": password }))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
+    data["token"]
+        .as_str()
+        .map(|s| s.to_string())
+        .ok_or_else(|| "Navidrome auth: no token in response".to_string())
+}
+
+#[tauri::command]
+async fn upload_playlist_cover(
+    server_url: String,
+    playlist_id: String,
+    username: String,
+    password: String,
+    file_bytes: Vec<u8>,
+    mime_type: String,
+) -> Result<(), String> {
+    let token = navidrome_token(&server_url, &username, &password).await?;
+    let part = reqwest::multipart::Part::bytes(file_bytes)
+        .file_name("cover.jpg")
+        .mime_str(&mime_type)
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::multipart::Form::new().part("image", part);
+    reqwest::Client::new()
+        .post(format!("{}/api/playlist/{}/image", server_url, playlist_id))
+        .header("X-ND-Authorization", format!("Bearer {}", token))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn upload_radio_cover(
+    server_url: String,
+    radio_id: String,
+    username: String,
+    password: String,
+    file_bytes: Vec<u8>,
+    mime_type: String,
+) -> Result<(), String> {
+    let token = navidrome_token(&server_url, &username, &password).await?;
+    let part = reqwest::multipart::Part::bytes(file_bytes)
+        .file_name("cover.jpg")
+        .mime_str(&mime_type)
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::multipart::Form::new().part("image", part);
+    reqwest::Client::new()
+        .post(format!("{}/api/radio/{}/image", server_url, radio_id))
+        .header("X-ND-Authorization", format!("Bearer {}", token))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn upload_artist_image(
+    server_url: String,
+    artist_id: String,
+    username: String,
+    password: String,
+    file_bytes: Vec<u8>,
+    mime_type: String,
+) -> Result<(), String> {
+    let token = navidrome_token(&server_url, &username, &password).await?;
+    let part = reqwest::multipart::Part::bytes(file_bytes)
+        .file_name("cover.jpg")
+        .mime_str(&mime_type)
+        .map_err(|e| e.to_string())?;
+    let form = reqwest::multipart::Form::new().part("image", part);
+    reqwest::Client::new()
+        .post(format!("{}/api/artist/{}/image", server_url, artist_id))
+        .header("X-ND-Authorization", format!("Bearer {}", token))
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn delete_radio_cover(
+    server_url: String,
+    radio_id: String,
+    username: String,
+    password: String,
+) -> Result<(), String> {
+    let token = navidrome_token(&server_url, &username, &password).await?;
+    let resp = reqwest::Client::new()
+        .delete(format!("{}/api/radio/{}/image", server_url, radio_id))
+        .header("X-ND-Authorization", format!("Bearer {}", token))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    // 404/503 = no image existed — treat as success
+    if !resp.status().is_success() && resp.status() != reqwest::StatusCode::NOT_FOUND && resp.status() != reqwest::StatusCode::SERVICE_UNAVAILABLE {
+        resp.error_for_status().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+const RADIO_PAGE_SIZE: u32 = 25;
+
+/// Search the radio-browser.info directory (needs User-Agent header — CORS would block WebView).
+#[tauri::command]
+async fn search_radio_browser(query: String, offset: u32) -> Result<Vec<serde_json::Value>, String> {
+    let client = reqwest::Client::new();
+    let limit_s = RADIO_PAGE_SIZE.to_string();
+    let offset_s = offset.to_string();
+    let resp = client
+        .get("https://de1.api.radio-browser.info/json/stations/search")
+        .header("User-Agent", "psysonic/1.0")
+        .query(&[
+            ("name", query.as_str()),
+            ("hidebroken", "true"),
+            ("limit", limit_s.as_str()),
+            ("offset", offset_s.as_str()),
+        ])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    resp.json::<Vec<serde_json::Value>>().await.map_err(|e| e.to_string())
+}
+
+/// Fetch top-voted stations from radio-browser.info for initial suggestions.
+#[tauri::command]
+async fn get_top_radio_stations(offset: u32) -> Result<Vec<serde_json::Value>, String> {
+    let client = reqwest::Client::new();
+    let limit_s = RADIO_PAGE_SIZE.to_string();
+    let offset_s = offset.to_string();
+    let resp = client
+        .get("https://de1.api.radio-browser.info/json/stations/topvote")
+        .header("User-Agent", "psysonic/1.0")
+        .query(&[("limit", limit_s.as_str()), ("offset", offset_s.as_str())])
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    resp.json::<Vec<serde_json::Value>>().await.map_err(|e| e.to_string())
+}
+
+/// Fetch arbitrary URL bytes (e.g. radio station favicon) through Rust to bypass CORS.
+/// Returns (bytes, content_type).
+#[tauri::command]
+async fn fetch_url_bytes(url: String) -> Result<(Vec<u8>, String), String> {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let resp = client
+        .get(&url)
+        .header("User-Agent", "psysonic/1.0")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?;
+    let content_type = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("image/jpeg")
+        .split(';')
+        .next()
+        .unwrap_or("image/jpeg")
+        .trim()
+        .to_string();
+    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    Ok((bytes.to_vec(), content_type))
 }
 
 /// Proxy Last.fm API calls through Rust/reqwest to avoid WebView networking restrictions.
@@ -243,14 +440,24 @@ async fn download_track_offline(
     server_id: String,
     url: String,
     suffix: String,
+    custom_dir: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
-    let cache_dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("psysonic-offline")
-        .join(&server_id);
+    // Determine base cache directory.
+    let cache_dir = if let Some(ref cd) = custom_dir {
+        let base = std::path::PathBuf::from(cd);
+        // Check that the volume/directory is still accessible.
+        if !base.exists() {
+            return Err("VOLUME_NOT_FOUND".to_string());
+        }
+        base.join(&server_id)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("psysonic-offline")
+            .join(&server_id)
+    };
 
     tokio::fs::create_dir_all(&cache_dir)
         .await
@@ -281,57 +488,201 @@ async fn download_track_offline(
     Ok(path_str)
 }
 
-/// Returns the total size in bytes of all files in the offline cache directory.
+/// Returns the total size in bytes of all files in the offline cache directory (and optional custom dir).
 #[tauri::command]
-async fn get_offline_cache_size(app: tauri::AppHandle) -> u64 {
-    let offline_dir = match app.path().app_data_dir() {
+async fn get_offline_cache_size(custom_dir: Option<String>, app: tauri::AppHandle) -> u64 {
+    fn dir_size(root: std::path::PathBuf) -> u64 {
+        if !root.exists() { return 0; }
+        let mut total: u64 = 0;
+        let mut stack = vec![root];
+        while let Some(dir) = stack.pop() {
+            let rd = match std::fs::read_dir(&dir) {
+                Ok(r) => r,
+                Err(_) => continue,
+            };
+            for entry in rd.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    stack.push(path);
+                } else if let Ok(meta) = std::fs::metadata(&path) {
+                    total += meta.len();
+                }
+            }
+        }
+        total
+    }
+
+    let default_dir = match app.path().app_data_dir() {
         Ok(d) => d.join("psysonic-offline"),
         Err(_) => return 0,
     };
-    if !offline_dir.exists() {
-        return 0;
-    }
-    let mut total: u64 = 0;
-    let mut stack = vec![offline_dir];
-    while let Some(dir) = stack.pop() {
-        let rd = match std::fs::read_dir(&dir) {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        for entry in rd.flatten() {
-            let path = entry.path();
-            if path.is_dir() {
-                stack.push(path);
-            } else if let Ok(meta) = std::fs::metadata(&path) {
-                total += meta.len();
-            }
+    let mut total = dir_size(default_dir);
+
+    if let Some(cd) = custom_dir {
+        let custom = std::path::PathBuf::from(cd);
+        if custom != std::path::PathBuf::from("") {
+            total += dir_size(custom);
         }
     }
     total
 }
 
-/// Removes a cached track from the offline cache directory.
+/// Removes a cached track from the offline cache. Accepts the full local path
+/// (stored in OfflineTrackMeta) so it works regardless of which directory was used.
+/// After deleting the file, empty parent directories up to (but not including)
+/// `base_dir` are pruned using `remove_dir` (never `remove_dir_all`).
 #[tauri::command]
 async fn delete_offline_track(
-    track_id: String,
-    server_id: String,
-    suffix: String,
+    local_path: String,
+    base_dir: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let file_path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
-        .join("psysonic-offline")
-        .join(&server_id)
-        .join(format!("{}.{}", track_id, suffix));
-
+    let file_path = std::path::PathBuf::from(&local_path);
     if file_path.exists() {
         tokio::fs::remove_file(&file_path)
             .await
             .map_err(|e| e.to_string())?;
     }
+
+    // Determine the safe boundary — never delete at or above this directory.
+    let boundary = if let Some(bd) = base_dir.filter(|s| !s.is_empty()) {
+        std::path::PathBuf::from(bd)
+    } else {
+        app.path()
+            .app_data_dir()
+            .map_err(|e| e.to_string())?
+            .join("psysonic-offline")
+    };
+
+    // Walk upward, pruning directories that have become empty.
+    // Stops as soon as a non-empty directory or the boundary is reached.
+    let mut current = file_path.parent().map(|p| p.to_path_buf());
+    while let Some(dir) = current {
+        if dir == boundary || !dir.starts_with(&boundary) {
+            break;
+        }
+        match std::fs::read_dir(&dir) {
+            Ok(mut entries) => {
+                if entries.next().is_some() {
+                    break; // Directory still has contents — stop pruning.
+                }
+                if std::fs::remove_dir(&dir).is_err() {
+                    break; // Could not remove (e.g. permissions) — stop.
+                }
+                current = dir.parent().map(|p| p.to_path_buf());
+            }
+            Err(_) => break,
+        }
+    }
+
     Ok(())
+}
+
+/// Builds and returns a new system-tray icon with all menu items and event handlers.
+/// Called from `setup()` (initial creation) and from `toggle_tray_icon` (re-creation).
+fn build_tray_icon(app: &tauri::AppHandle) -> tauri::Result<TrayIcon> {
+    let play_pause = MenuItemBuilder::with_id("play_pause", "Play / Pause").build(app)?;
+    let next       = MenuItemBuilder::with_id("next",       "Next Track").build(app)?;
+    let previous   = MenuItemBuilder::with_id("previous",   "Previous Track").build(app)?;
+    let sep1       = PredefinedMenuItem::separator(app)?;
+    let show_hide  = MenuItemBuilder::with_id("show_hide",  "Show / Hide").build(app)?;
+    let sep2       = PredefinedMenuItem::separator(app)?;
+    let quit       = MenuItemBuilder::with_id("quit",       "Exit Psysonic").build(app)?;
+
+    let menu = MenuBuilder::new(app)
+        .item(&play_pause)
+        .item(&previous)
+        .item(&next)
+        .item(&sep1)
+        .item(&show_hide)
+        .item(&sep2)
+        .item(&quit)
+        .build()?;
+
+    TrayIconBuilder::new()
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .tooltip("Psysonic")
+        .on_menu_event(|app, event| match event.id.as_ref() {
+            "play_pause" => { let _ = app.emit("tray:play-pause", ()); }
+            "next"       => { let _ = app.emit("tray:next", ()); }
+            "previous"   => { let _ = app.emit("tray:previous", ()); }
+            "show_hide"  => {
+                if let Some(win) = app.get_webview_window("main") {
+                    if win.is_visible().unwrap_or(false) {
+                        let _ = win.hide();
+                    } else {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+            }
+            "quit" => { stop_audio_engine(app); app.exit(0); }
+            _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event {
+                let app = tray.app_handle();
+                if let Some(win) = app.get_webview_window("main") {
+                    if win.is_visible().unwrap_or(false) {
+                        let _ = win.hide();
+                    } else {
+                        let _ = win.show();
+                        let _ = win.set_focus();
+                    }
+                }
+            }
+        })
+        .build(app)
+}
+
+/// Show (`true`) or fully remove (`false`) the system-tray icon.
+///
+/// The command is strictly idempotent:
+/// - `show=true`  when the icon is already present → no-op (prevents duplicate icons).
+/// - `show=false` when the icon is already absent  → no-op.
+///
+/// For removal, `set_visible(false)` is called explicitly before the handle is
+/// dropped because some platforms (Windows notification area, certain Linux DEs)
+/// process the OS removal asynchronously — hiding first prevents a brief "ghost"
+/// icon from appearing alongside a freshly created one.
+#[tauri::command]
+fn toggle_tray_icon(
+    app: tauri::AppHandle,
+    tray_state: tauri::State<TrayState>,
+    show: bool,
+) -> Result<(), String> {
+    let mut guard = tray_state.lock().unwrap();
+
+    if show {
+        // Early-return when already shown — never build a second icon.
+        if guard.is_some() {
+            return Ok(());
+        }
+        *guard = Some(build_tray_icon(&app).map_err(|e| e.to_string())?);
+    } else if let Some(tray) = guard.take() {
+        // Hide synchronously before dropping so the OS processes the removal
+        // before any subsequent show=true call can create a new icon.
+        let _ = tray.set_visible(false);
+        // `tray` drops here → frees the OS resource (NIM_DELETE / StatusNotifierItem / NSStatusItem).
+    }
+
+    Ok(())
+}
+
+/// Stops the Rust audio engine cleanly (mirrors the logic in `audio_stop`).
+/// Called before process exit on macOS to ensure audio stops immediately.
+fn stop_audio_engine(app: &tauri::AppHandle) {
+    let engine = app.state::<audio::AudioEngine>();
+    engine.generation.fetch_add(1, Ordering::SeqCst);
+    *engine.chained_info.lock().unwrap() = None;
+    drop(engine.radio_state.lock().unwrap().take());
+    let mut cur = engine.current.lock().unwrap();
+    if let Some(sink) = cur.sink.take() { sink.stop(); }
 }
 
 pub fn run() {
@@ -340,6 +691,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(audio_engine)
         .manage(ShortcutMap::default())
+        .manage(discord::DiscordState::new())
+        .manage(TrayState::default())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -357,65 +710,11 @@ pub fn run() {
 
         .setup(|app| {
             // ── System tray ───────────────────────────────────────────────
+            // Always build on startup; the frontend calls toggle_tray_icon(false)
+            // immediately after load if the user has disabled the tray icon.
             {
-                let play_pause = MenuItemBuilder::with_id("play_pause", "Play / Pause").build(app)?;
-                let next       = MenuItemBuilder::with_id("next",       "Next Track").build(app)?;
-                let previous   = MenuItemBuilder::with_id("previous",   "Previous Track").build(app)?;
-                let sep1       = PredefinedMenuItem::separator(app)?;
-                let show_hide  = MenuItemBuilder::with_id("show_hide",  "Show / Hide").build(app)?;
-                let sep2       = PredefinedMenuItem::separator(app)?;
-                let quit       = MenuItemBuilder::with_id("quit",       "Exit Psysonic").build(app)?;
-
-                let menu = MenuBuilder::new(app)
-                    .item(&play_pause)
-                    .item(&previous)
-                    .item(&next)
-                    .item(&sep1)
-                    .item(&show_hide)
-                    .item(&sep2)
-                    .item(&quit)
-                    .build()?;
-
-                TrayIconBuilder::new()
-                    .icon(app.default_window_icon().unwrap().clone())
-                    .menu(&menu)
-                    .tooltip("Psysonic")
-                    .on_menu_event(|app, event| match event.id.as_ref() {
-                        "play_pause" => { let _ = app.emit("tray:play-pause", ()); }
-                        "next"       => { let _ = app.emit("tray:next", ()); }
-                        "previous"   => { let _ = app.emit("tray:previous", ()); }
-                        "show_hide"  => {
-                            if let Some(win) = app.get_webview_window("main") {
-                                if win.is_visible().unwrap_or(false) {
-                                    let _ = win.hide();
-                                } else {
-                                    let _ = win.show();
-                                    let _ = win.set_focus();
-                                }
-                            }
-                        }
-                        "quit" => { std::process::exit(0); }
-                        _ => {}
-                    })
-                    .on_tray_icon_event(|tray, event| {
-                        // Left-click: toggle window visibility
-                        if let TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } = event {
-                            let app = tray.app_handle();
-                            if let Some(win) = app.get_webview_window("main") {
-                                if win.is_visible().unwrap_or(false) {
-                                    let _ = win.hide();
-                                } else {
-                                    let _ = win.show();
-                                    let _ = win.set_focus();
-                                }
-                            }
-                        }
-                    })
-                    .build(app)?;
+                let tray = build_tray_icon(app.handle())?;
+                *app.state::<TrayState>().lock().unwrap() = Some(tray);
             }
 
             // ── MPRIS2 / OS media controls via souvlaki ──────────────────
@@ -513,9 +812,22 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 if window.label() == "main" {
-                    // Let JS decide: minimize to tray or exit, based on user setting.
                     api.prevent_close();
-                    let _ = window.emit("window:close-requested", ());
+
+                    #[cfg(target_os = "macos")]
+                    {
+                        // On macOS the red close button quits the app entirely.
+                        // Stop the audio engine first so sound cuts immediately.
+                        let app = window.app_handle();
+                        stop_audio_engine(app);
+                        app.exit(0);
+                    }
+
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        // Let JS decide: minimize to tray or exit, based on user setting.
+                        let _ = window.emit("window:close-requested", ());
+                    }
                 }
             }
         })
@@ -534,15 +846,28 @@ pub fn run() {
             audio::audio_set_volume,
             audio::audio_update_replay_gain,
             audio::audio_set_eq,
+            audio::autoeq_entries,
+            audio::autoeq_fetch_profile,
             audio::audio_preload,
+            audio::audio_play_radio,
             audio::audio_set_crossfade,
             audio::audio_set_gapless,
             audio::audio_chain_preload,
+            discord::discord_update_presence,
+            discord::discord_clear_presence,
             lastfm_request,
+            upload_playlist_cover,
+            upload_radio_cover,
+            upload_artist_image,
+            delete_radio_cover,
+            search_radio_browser,
+            get_top_radio_stations,
+            fetch_url_bytes,
             download_track_offline,
             delete_offline_track,
             get_offline_cache_size,
             relaunch_after_update,
+            toggle_tray_icon,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Psysonic");

@@ -1,6 +1,6 @@
 <div align="center">
-  <img src="public/logo-psysonic.png" alt="Psysonic Logo" width="200"/>
-  <h1>Psysonic</h1>
+  <img src="public/psysonic-inapp-logo.svg" alt="Psysonic Logo" width="300"/>
+
   <p><strong>A modern, gorgeous, and blazing fast desktop client for Subsonic API compatible music servers (Navidrome, Gonic, etc.).</strong></p>
   
   <p>
@@ -8,7 +8,17 @@
     <a href="https://github.com/Psychotoxical/psysonic/blob/main/LICENSE"><img alt="License: GPL v3" src="https://img.shields.io/badge/License-GPLv3-cba6f7?style=flat-square"></a>
     <a href="https://tauri.app/"><img alt="Built with Tauri" src="https://img.shields.io/badge/Built%20with-Tauri-242938?style=flat-square&logo=tauri"></a>
     <a href="https://aur.archlinux.org/packages/psysonic"><img alt="AUR" src="https://img.shields.io/aur/version/psysonic?style=flat-square&color=1793d1"></a>
+    <a href="https://discord.gg/ckVPGPMS"><img alt="Discord" src="https://img.shields.io/badge/Discord-Join%20us-5865F2?style=flat-square&logo=discord&logoColor=white"></a>
   </p>
+</div>
+
+---
+
+<div align="center">
+  <a href="https://discord.gg/ckVPGPMS">
+    <img src="https://img.shields.io/badge/Join%20the%20Psysonic%20Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white" alt="Join Discord"/>
+  </a>
+  <p>Have questions, ideas, or just want to hang out? Come chat in our Discord server!</p>
 </div>
 
 ---
@@ -80,13 +90,41 @@ Designed specifically for users hosting their own music via Navidrome or other S
 
 Navigate to the [Releases](https://github.com/Psychotoxical/psysonic/releases) page and download the installer for your operating system.
 
-- **Windows**: `.exe` (NSIS installer)
-- **macOS**: `.dmg` (Universal or Apple Silicon)
-- **Linux (Ubuntu/Debian)**: `.deb` from GitHub Releases
-- **Linux (Fedora/RHEL)**: `.rpm` from GitHub Releases
-- **Linux (Arch/CachyOS)**: AUR — `yay -S psysonic` or `paru -S psysonic`
+### 🐧 Linux
 
-> The AUR package builds from source using your system's own WebKitGTK — no bundled libs, no EGL/Mesa compatibility issues.
+- **Ubuntu / Debian**: `.deb` from GitHub Releases
+- **Fedora / RHEL**: `.rpm` from GitHub Releases
+
+### 🍎 macOS
+
+- **macOS**: `.dmg` (Universal or Apple Silicon)
+
+> [!WARNING]
+> **Gatekeeper Note:**
+> Since the app is released without an Apple Developer certificate, macOS will block it by default. To bypass this, run the following command in the Terminal after moving the app to the Applications folder:
+> ```sh
+> xattr -cr /Applications/Psysonic.app
+> ```
+
+### 🪟 Windows
+
+- **Windows**: `.exe` (NSIS installer)
+
+> [!WARNING]
+> **SmartScreen Note:**
+> Windows SmartScreen might show a warning because the installer isn't signed with an expensive developer certificate. Click on **"More info"** and then **"Run anyway"**.
+
+## 📦 Installation (Arch Linux / AUR)
+
+Psysonic is available in the **AUR** in two versions. Choose the one that best fits your needs:
+
+| Package | Type | Description |
+| :--- | :--- | :--- |
+| [**psysonic**](https://aur.archlinux.org/packages/psysonic) | **Source** | Builds from source using your system's native **WebKitGTK** (no bundled libs, no EGL/Mesa compatibility issues). |
+| [**psysonic-bin**](https://aur.archlinux.org/packages/psysonic-bin) | **Binary** | Pre-compiled version for faster installation. |
+
+> [!TIP]
+> The AUR binary package is kindly provided and maintained by [**kilyabin**](https://github.com/kilyabin).
 
 ## 🚀 Getting Started
 

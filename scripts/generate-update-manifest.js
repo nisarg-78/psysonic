@@ -26,6 +26,25 @@ const PLATFORM_FILES = {
 
 const platforms = {};
 
+// A real minisign .sig file is multi-line and ~200+ chars.
+// A public key (RWTxxx... single line, ~56 chars) must never appear here.
+function validateSignature(sig, platform, sigFile) {
+  // Public keys start with RWT and are a single short base64 token
+  if (/^RWT[A-Za-z0-9+/]{10,}={0,2}$/.test(sig)) {
+    throw new Error(
+      `${platform}: .sig file "${sigFile}" contains a PUBLIC KEY instead of a signature.\n` +
+      `  Got: ${sig}\n` +
+      `  The TAURI_SIGNING_PUBLIC_KEY env var must never be used as the signature value.\n` +
+      `  Ensure the signing step correctly writes the .sig file from the private key.`
+    );
+  }
+  if (sig.length < 80) {
+    throw new Error(
+      `${platform}: .sig file "${sigFile}" looks too short (${sig.length} chars) to be a valid signature.`
+    );
+  }
+}
+
 for (const [platform, filename] of Object.entries(PLATFORM_FILES)) {
   const sigFile = `${filename}.sig`;
   try {
@@ -34,11 +53,12 @@ for (const [platform, filename] of Object.entries(PLATFORM_FILES)) {
       { stdio: 'pipe' }
     );
     const signature = fs.readFileSync(sigFile, 'utf8').trim();
+    validateSignature(signature, platform, sigFile);
     const url = `https://github.com/${REPO}/releases/download/${TAG}/${filename}`;
     platforms[platform] = { signature, url };
     console.log(`✓ ${platform}`);
   } catch (e) {
-    console.warn(`⚠ Skipping ${platform}: asset not found (${sigFile})`);
+    console.warn(`⚠ Skipping ${platform}: ${e.message}`);
   }
 }
 

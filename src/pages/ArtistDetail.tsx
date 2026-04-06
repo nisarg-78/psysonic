@@ -4,9 +4,11 @@ import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, getAlbum, sear
 import AlbumCard from '../components/AlbumCard';
 import CachedImage from '../components/CachedImage';
 import CoverLightbox from '../components/CoverLightbox';
-import { ArrowLeft, Users, ExternalLink, Heart, Play, Shuffle, Radio } from 'lucide-react';
+import { ArrowLeft, Users, ExternalLink, Heart, Play, Shuffle, Radio, HardDriveDownload, Check } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-shell';
 import { usePlayerStore, songToTrack } from '../store/playerStore';
+import { useOfflineStore } from '../store/offlineStore';
+import { useAuthStore } from '../store/authStore';
 import { useTranslation } from 'react-i18next';
 import { lastfmGetSimilarArtists, lastfmIsConfigured } from '../api/lastfm';
 import LastfmIcon from '../components/LastfmIcon';
@@ -60,6 +62,8 @@ export default function ArtistDetail() {
   const openContextMenu = usePlayerStore(state => state.openContextMenu);
   const currentTrack = usePlayerStore(state => state.currentTrack);
   const isPlaying = usePlayerStore(state => state.isPlaying);
+  const { downloadArtist, bulkProgress } = useOfflineStore();
+  const activeServerId = useAuthStore(s => s.activeServerId) ?? '';
 
   useEffect(() => {
     if (!id) return;
@@ -341,6 +345,28 @@ export default function ArtistDetail() {
               {radioLoading ? <div className="spinner" style={{ width: 16, height: 16, borderTopColor: 'currentColor' }} /> : <Radio size={16} />}
               {radioLoading ? t('artistDetail.loading') : t('artistDetail.radio')}
             </button>
+            {albums.length > 0 && (() => {
+              const progress = id ? bulkProgress[id] : undefined;
+              const isDone = progress && progress.done === progress.total;
+              const isDownloading = progress && !isDone;
+              return (
+                <button
+                  className="btn btn-surface"
+                  disabled={!!isDownloading}
+                  onClick={() => { if (id && artist) downloadArtist(id, artist.name, activeServerId); }}
+                  data-tooltip={isDownloading
+                    ? t('artistDetail.offlineDownloading', { done: progress.done, total: progress.total })
+                    : isDone ? t('artistDetail.offlineCached') : t('artistDetail.cacheOffline')}
+                >
+                  {isDownloading
+                    ? <div className="spinner" style={{ width: 16, height: 16, borderTopColor: 'currentColor' }} />
+                    : isDone ? <Check size={16} /> : <HardDriveDownload size={16} />}
+                  {isDownloading
+                    ? t('artistDetail.offlineDownloading', { done: progress.done, total: progress.total })
+                    : isDone ? t('artistDetail.offlineCached') : t('artistDetail.cacheOffline')}
+                </button>
+              );
+            })()}
           </div>
         </div>
       </div>
@@ -362,7 +388,7 @@ export default function ArtistDetail() {
             {t('artistDetail.topTracks')}
           </h2>
           <div className="tracklist" style={{ padding: 0, marginBottom: '2rem' }}>
-            <div className="tracklist-header" style={{ gridTemplateColumns: '36px minmax(150px, 2fr) minmax(100px, 1fr) 60px' }}>
+            <div className="tracklist-header" style={{ gridTemplateColumns: '60px minmax(150px, 1fr) minmax(100px, 1fr) 65px' }}>
               <div style={{ textAlign: 'center' }}>#</div>
               <div>{t('artistDetail.trackTitle')}</div>
               <div>{t('artistDetail.trackAlbum')}</div>
@@ -374,7 +400,7 @@ export default function ArtistDetail() {
                      <div
                        key={song.id}
                        className="track-row"
-                       style={{ gridTemplateColumns: '36px minmax(150px, 2fr) minmax(100px, 1fr) 60px' }}
+                       style={{ gridTemplateColumns: '60px minmax(150px, 1fr) minmax(100px, 1fr) 65px' }}
                        onClick={e => {
                          if ((e.target as HTMLElement).closest('button, a, input')) return;
                          playTrack(track, topSongs.map(songToTrack));
@@ -384,12 +410,10 @@ export default function ArtistDetail() {
                          openContextMenu(e.clientX, e.clientY, track, 'song');
                        }}
                      >
-                <div className="track-num" style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); playTrack(track, topSongs.map(songToTrack)); }}>
-                  <span style={{ color: currentTrack?.id === song.id ? 'var(--accent)' : 'var(--text-muted)' }}>
-                    {currentTrack?.id === song.id && isPlaying
-                      ? <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
-                      : <Play size={13} fill="currentColor" />}
-                  </span>
+                <div className={`track-num${currentTrack?.id === song.id ? ' track-num-active' : ''}`} style={{ cursor: 'pointer' }} onClick={e => { e.stopPropagation(); playTrack(track, topSongs.map(songToTrack)); }}>
+                  {currentTrack?.id === song.id && isPlaying && <span className="track-num-eq"><div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div></span>}
+                  <span className="track-num-play"><Play size={13} fill="currentColor" /></span>
+                  <span className="track-num-number">{idx + 1}</span>
                 </div>
                 <div className="track-info" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                   {song.coverArt && (

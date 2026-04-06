@@ -3,7 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { showToast } from '../utils/toast';
-import { buildStreamUrl, buildCoverArtUrl, getPlayQueue, savePlayQueue, reportNowPlaying, scrobbleSong, SubsonicSong, getSong, getRandomSongs, getSimilarSongs2, getTopSongs } from '../api/subsonic';
+import { buildStreamUrl, buildCoverArtUrl, getPlayQueue, savePlayQueue, reportNowPlaying, scrobbleSong, SubsonicSong, getSong, getRandomSongs, getSimilarSongs2, getTopSongs, InternetRadioStation } from '../api/subsonic';
 import { lastfmScrobble, lastfmUpdateNowPlaying, lastfmLoveTrack, lastfmUnloveTrack, lastfmGetTrackLoved, lastfmGetAllLovedTracks } from '../api/lastfm';
 import { useAuthStore } from './authStore';
 import { useOfflineStore } from './offlineStore';
@@ -60,6 +60,7 @@ export function songToTrack(song: SubsonicSong): Track {
 
 interface PlayerState {
   currentTrack: Track | null;
+  currentRadio: InternetRadioStation | null;
   queue: Track[];
   queueIndex: number;
   isPlaying: boolean;
@@ -73,12 +74,13 @@ interface PlayerState {
   starredOverrides: Record<string, boolean>;
   setStarredOverride: (id: string, starred: boolean) => void;
 
-  playTrack: (track: Track, queue?: Track[]) => void;
+  playRadio: (station: InternetRadioStation) => void;
+  playTrack: (track: Track, queue?: Track[], manual?: boolean) => void;
   pause: () => void;
   resume: () => void;
   stop: () => void;
   togglePlay: () => void;
-  next: () => void;
+  next: (manual?: boolean) => void;
   previous: () => void;
   seek: (progress: number) => void;
   setVolume: (v: number) => void;
@@ -156,6 +158,53 @@ let seekTarget: number | null = null;
 // to the Rust backend before it has finished the previous one.
 let togglePlayLock = false;
 
+// ── HTML5 Radio Player ────────────────────────────────────────────────────────
+// Internet radio streams are played via a native <audio> element instead of
+// the Rust/Symphonia engine.  This gives us browser-native reconnect logic,
+// codec support (MP3, AAC, HE-AAC, OGG) and stable ICY stream handling for
+// free, without touching the regular playback pipeline at all.
+const radioAudio = new Audio();
+radioAudio.preload = 'none';
+let radioStopping = false;
+// Pending reconnect timer for stalled streams — null when no reconnect is scheduled.
+let radioReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearRadioReconnectTimer() {
+  if (radioReconnectTimer) { clearTimeout(radioReconnectTimer); radioReconnectTimer = null; }
+}
+
+radioAudio.addEventListener('ended', () => {
+  // Stream disconnected unexpectedly — clear radio state.
+  clearRadioReconnectTimer();
+  usePlayerStore.setState({ isPlaying: false, currentRadio: null, progress: 0, currentTime: 0 });
+});
+radioAudio.addEventListener('error', () => {
+  clearRadioReconnectTimer();
+  if (radioStopping) { radioStopping = false; return; }
+  usePlayerStore.setState({ isPlaying: false, currentRadio: null });
+  showToast('Radio stream error', 3000, 'error');
+});
+// Stalled: stream stopped delivering data — try to reconnect after 4 s.
+radioAudio.addEventListener('stalled', () => {
+  if (radioReconnectTimer) return; // already scheduled
+  radioReconnectTimer = setTimeout(() => {
+    radioReconnectTimer = null;
+    if (!usePlayerStore.getState().currentRadio) return;
+    // Re-assign src to force a fresh connection, then resume playback.
+    const src = radioAudio.src;
+    radioAudio.src = src;
+    radioAudio.play().catch(console.error);
+  }, 4000);
+});
+// Waiting: browser is rebuffering — normal for live streams, no action needed.
+radioAudio.addEventListener('waiting', () => {
+  console.debug('[psysonic] radio: buffering');
+});
+// Suspend: browser paused loading (sufficient buffer) — cancel any stale reconnect.
+radioAudio.addEventListener('suspend', () => {
+  clearRadioReconnectTimer();
+});
+
 // Timestamp of the last gapless auto-advance (from audio:track_switched).
 // Used to suppress ghost-commands from stale IPC arriving after the switch.
 let lastGaplessSwitchTime = 0;
@@ -215,9 +264,15 @@ function handleAudioProgress(current_time: number, duration: number) {
     }
   }
 
-  // Pre-buffer / pre-chain next track when 30 s remain.
-  const { gaplessEnabled } = useAuthStore.getState();
-  if (dur - current_time < 30 && dur - current_time > 0) {
+  // Pre-buffer / pre-chain next track based on preload mode.
+  const { gaplessEnabled, preloadMode, preloadCustomSeconds } = useAuthStore.getState();
+  const remaining = dur - current_time;
+  const shouldPreload = preloadMode === 'early'
+    ? current_time >= 5
+    : preloadMode === 'custom'
+      ? remaining < preloadCustomSeconds && remaining > 0
+      : remaining < 30 && remaining > 0; // balanced (default)
+  if (shouldPreload) {
     const { queue, queueIndex, repeatMode } = store;
     const nextIdx = queueIndex + 1;
     const nextTrack = repeatMode === 'one'
@@ -262,14 +317,21 @@ function handleAudioEnded() {
     return;
   }
 
+  // Radio stream disconnected — just stop; don't advance queue.
+  if (usePlayerStore.getState().currentRadio) {
+    isAudioPaused = false;
+    usePlayerStore.setState({ isPlaying: false, currentRadio: null, progress: 0, currentTime: 0 });
+    return;
+  }
+
   const { repeatMode, currentTrack, queue } = usePlayerStore.getState();
   isAudioPaused = false;
   usePlayerStore.setState({ isPlaying: false, progress: 0, currentTime: 0, buffered: 0 });
   setTimeout(() => {
     if (repeatMode === 'one' && currentTrack) {
-      usePlayerStore.getState().playTrack(currentTrack, queue);
+      usePlayerStore.getState().playTrack(currentTrack, queue, false);
     } else {
-      usePlayerStore.getState().next();
+      usePlayerStore.getState().next(false);
     }
   }, 150);
 }
@@ -341,7 +403,7 @@ function handleAudioError(message: string) {
   usePlayerStore.setState({ isPlaying: false });
   setTimeout(() => {
     if (playGeneration !== gen) return;
-    usePlayerStore.getState().next();
+    usePlayerStore.getState().next(false);
   }, 1500);
 }
 
@@ -427,9 +489,50 @@ export function initAudioListeners(): () => void {
     }
   });
 
+  // ── Discord Rich Presence sync ────────────────────────────────────────────
+  // Updates on track change or play/pause toggle. No per-tick updates needed —
+  // Discord auto-counts up the elapsed timer from the start_timestamp we set.
+  let discordPrevTrackId: string | null = null;
+  let discordPrevIsPlaying: boolean | null = null;
+
+  function syncDiscord() {
+    const { currentTrack, isPlaying, currentTime } = usePlayerStore.getState();
+    const { discordRichPresence } = useAuthStore.getState();
+
+    if (!discordRichPresence || !currentTrack) {
+      if (discordPrevTrackId !== null) {
+        discordPrevTrackId = null;
+        discordPrevIsPlaying = null;
+        invoke('discord_clear_presence').catch(() => {});
+      }
+      return;
+    }
+
+    const trackChanged = currentTrack.id !== discordPrevTrackId;
+    const playingChanged = isPlaying !== discordPrevIsPlaying;
+    if (!trackChanged && !playingChanged) return;
+
+    discordPrevTrackId = currentTrack.id;
+    discordPrevIsPlaying = isPlaying;
+
+    invoke('discord_update_presence', {
+      title: currentTrack.title,
+      artist: currentTrack.artist ?? 'Unknown Artist',
+      album: currentTrack.album ?? null,
+      // Pass elapsed when playing so Discord shows a live running timer.
+      // Pass null when paused — Discord shows the song/artist without a timer.
+      elapsedSecs: isPlaying ? currentTime : null,
+    }).catch(() => {});
+  }
+
+  const unsubDiscordPlayer = usePlayerStore.subscribe(syncDiscord);
+  const unsubDiscordAuth = useAuthStore.subscribe(syncDiscord);
+
   return () => {
     unsubAuth();
     unsubMpris();
+    unsubDiscordPlayer();
+    unsubDiscordAuth();
     pending.forEach(p => p.then(unlisten => unlisten()));
   };
 }
@@ -440,6 +543,7 @@ export const usePlayerStore = create<PlayerState>()(
   persist(
     (set, get) => ({
       currentTrack: null,
+      currentRadio: null,
       queue: [],
       queueIndex: 0,
       isPlaying: false,
@@ -528,14 +632,52 @@ export const usePlayerStore = create<PlayerState>()(
 
       // ── stop ────────────────────────────────────────────────────────────────
       stop: () => {
-        invoke('audio_stop').catch(console.error);
+        if (get().currentRadio) {
+          clearRadioReconnectTimer();
+          radioStopping = true;
+          radioAudio.pause();
+          radioAudio.src = '';
+        } else {
+          invoke('audio_stop').catch(console.error);
+        }
         isAudioPaused = false;
         if (seekDebounce) { clearTimeout(seekDebounce); seekDebounce = null; } seekTarget = null;
-        set({ isPlaying: false, progress: 0, buffered: 0, currentTime: 0 });
+        set({ isPlaying: false, progress: 0, buffered: 0, currentTime: 0, currentRadio: null });
+      },
+
+      // ── playRadio ────────────────────────────────────────────────────────────
+      playRadio: (station) => {
+        const { volume } = get();
+        ++playGeneration;
+        isAudioPaused = false;
+        clearRadioReconnectTimer();
+        gaplessPreloadingId = null;
+        if (seekDebounce) { clearTimeout(seekDebounce); seekDebounce = null; } seekTarget = null;
+        // Stop Rust engine in case a regular track was playing.
+        invoke('audio_stop').catch(() => {});
+        // Play via HTML5 audio — browser handles reconnects, codec negotiation, buffering.
+        radioAudio.src = station.streamUrl;
+        radioAudio.volume = volume;
+        radioAudio.play().catch((err: unknown) => {
+          console.error('[psysonic] radio HTML5 play failed:', err);
+          showToast('Radio stream error', 3000, 'error');
+          set({ isPlaying: false, currentRadio: null });
+        });
+        set({
+          currentRadio: station,
+          currentTrack: null,
+          queue: [],
+          queueIndex: 0,
+          isPlaying: true,
+          progress: 0,
+          currentTime: 0,
+          buffered: 0,
+          scrobbled: true, // no scrobbling for radio
+        });
       },
 
       // ── playTrack ────────────────────────────────────────────────────────────
-      playTrack: (track, queue) => {
+      playTrack: (track, queue, manual = true) => {
         // Ghost-command guard: if a gapless switch happened within 500 ms,
         // this playTrack call is likely a stale IPC echo — suppress it.
         if (Date.now() - lastGaplessSwitchTime < 500) {
@@ -547,13 +689,24 @@ export const usePlayerStore = create<PlayerState>()(
         gaplessPreloadingId = null; // new track — allow fresh preload for next
         if (seekDebounce) { clearTimeout(seekDebounce); seekDebounce = null; } seekTarget = null;
 
+        // If a radio stream is active, stop it before the new track starts so
+        // the PlayerBar clears radio mode immediately and the stream is released.
+        if (get().currentRadio) {
+          clearRadioReconnectTimer();
+          radioStopping = true;
+          radioAudio.pause();
+          radioAudio.src = '';
+        }
+
         const state = get();
         const newQueue = queue ?? state.queue;
         const idx = newQueue.findIndex(t => t.id === track.id);
 
         // Set state immediately so the UI updates before the download completes.
+        // currentRadio: null ensures the PlayerBar switches out of radio mode right away.
         set({
           currentTrack: track,
+          currentRadio: null,
           queue: newQueue,
           queueIndex: idx >= 0 ? idx : 0,
           progress: 0,
@@ -576,13 +729,14 @@ export const usePlayerStore = create<PlayerState>()(
           durationHint: track.duration,
           replayGainDb,
           replayGainPeak,
+          manual,
         }).catch((err: unknown) => {
           if (playGeneration !== gen) return;
           console.error('[psysonic] audio_play failed:', err);
           set({ isPlaying: false });
           setTimeout(() => {
             if (playGeneration !== gen) return;
-            get().next();
+            get().next(false);
           }, 500);
         });
 
@@ -604,12 +758,21 @@ export const usePlayerStore = create<PlayerState>()(
 
       // ── pause / resume / togglePlay ──────────────────────────────────────────
       pause: () => {
-        invoke('audio_pause').catch(console.error);
-        isAudioPaused = true;
+        if (get().currentRadio) {
+          radioAudio.pause();
+        } else {
+          invoke('audio_pause').catch(console.error);
+          isAudioPaused = true;
+        }
         set({ isPlaying: false });
       },
 
       resume: () => {
+        if (get().currentRadio) {
+          radioAudio.play().catch(console.error);
+          set({ isPlaying: true });
+          return;
+        }
         const { currentTrack, queue, currentTime } = get();
         if (!currentTrack) return;
 
@@ -641,6 +804,7 @@ export const usePlayerStore = create<PlayerState>()(
               volume: vol,
               durationHint: trackToPlay.duration,
               replayGainDb: replayGainDbCold,
+              manual: false,
               replayGainPeak: replayGainPeakCold,
             }).then(() => {
               if (playGeneration === gen && currentTime > 1) {
@@ -668,6 +832,7 @@ export const usePlayerStore = create<PlayerState>()(
                durationHint: currentTrack.duration,
                replayGainDb: replayGainDbCold,
                replayGainPeak: replayGainPeakCold,
+               manual: false,
              }).catch((err: unknown) => {
                if (playGeneration !== gen) return;
                console.error('[psysonic] audio_play (cold resume) failed:', err);
@@ -687,11 +852,11 @@ export const usePlayerStore = create<PlayerState>()(
       },
 
       // ── next / previous ──────────────────────────────────────────────────────
-      next: () => {
+      next: (manual = true) => {
         const { queue, queueIndex, repeatMode, currentTrack } = get();
         const nextIdx = queueIndex + 1;
         if (nextIdx < queue.length) {
-          get().playTrack(queue[nextIdx], queue);
+          get().playTrack(queue[nextIdx], queue, manual);
           // Proactively top up auto-added tracks when ≤ 2 remain ahead,
           // so the queue never runs dry without a visible loading pause.
           const { infiniteQueueEnabled } = useAuthStore.getState();
@@ -735,7 +900,7 @@ export const usePlayerStore = create<PlayerState>()(
             }
           }
         } else if (repeatMode === 'all' && queue.length > 0) {
-          get().playTrack(queue[0], queue);
+          get().playTrack(queue[0], queue, manual);
         } else {
           // Queue exhausted. Check radio first (independent of infinite queue setting),
           // then infinite queue, then stop.
@@ -755,7 +920,7 @@ export const usePlayerStore = create<PlayerState>()(
                   if (fresh.length > 0) {
                     const currentQueue = get().queue;
                     const newQueue = [...currentQueue, ...fresh];
-                    get().playTrack(fresh[0], newQueue);
+                    get().playTrack(fresh[0], newQueue, false);
                   } else {
                     invoke('audio_stop').catch(console.error);
                     isAudioPaused = false;
@@ -786,7 +951,7 @@ export const usePlayerStore = create<PlayerState>()(
               const newTracks: Track[] = songs.map(s => ({ ...songToTrack(s), autoAdded: true }));
               const currentQueue = get().queue;
               const newQueue = [...currentQueue, ...newTracks];
-              get().playTrack(newTracks[0], newQueue);
+              get().playTrack(newTracks[0], newQueue, false);
             }).catch(() => {
               infiniteQueueFetching = false;
               invoke('audio_stop').catch(console.error);
@@ -834,6 +999,7 @@ export const usePlayerStore = create<PlayerState>()(
       setVolume: (v) => {
         const clamped = Math.max(0, Math.min(1, v));
         invoke('audio_set_volume', { volume: clamped }).catch(console.error);
+        radioAudio.volume = clamped;
         set({ volume: clamped });
       },
 
