@@ -65,6 +65,10 @@ export const frTranslation = {
     advancedEmpty: 'Entrez un terme de recherche ou sélectionnez un filtre.',
     advancedNoResults: 'Aucun résultat trouvé.',
     advancedGenreNote: 'Les morceaux sont sélectionnés aléatoirement dans ce genre.',
+    recentSearches: 'Recherches récentes',
+    browse: 'Parcourir',
+    emptyHint: 'Que veux-tu écouter ?',
+    genres: 'Genres',
   },
   nowPlaying: {
     tooltip: 'Qui écoute ?',
@@ -341,6 +345,7 @@ export const frTranslation = {
     languageZh: 'Chinois',
     languageNb: 'Norvégien',
     languageRu: 'Russe',
+    languageRu2: 'Russe 2',
     font: 'Police',
     theme: 'Thème',
     appearance: 'Apparence',

@@ -65,6 +65,10 @@ export const deTranslation = {
     advancedEmpty: 'Suchbegriff eingeben oder Filter wählen, um zu beginnen.',
     advancedNoResults: 'Keine Ergebnisse gefunden.',
     advancedGenreNote: 'Songs werden zufällig aus dem Genre gewählt.',
+    recentSearches: 'Zuletzt gesucht',
+    browse: 'Stöbern',
+    emptyHint: 'Was möchtest du hören?',
+    genres: 'Genres',
   },
   nowPlaying: {
     tooltip: 'Wer hört was?',
@@ -341,6 +345,7 @@ export const deTranslation = {
     languageZh: 'Chinesisch',
     languageNb: 'Norwegisch',
     languageRu: 'Russisch',
+    languageRu2: 'Russisch 2',
     font: 'Schriftart',
     theme: 'Design',
     appearance: 'Darstellung',

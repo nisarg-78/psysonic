@@ -65,6 +65,10 @@ export const nlTranslation = {
     advancedEmpty: 'Voer een zoekterm in of selecteer een filter.',
     advancedNoResults: 'Geen resultaten gevonden.',
     advancedGenreNote: 'Nummers worden willekeurig uit dit genre geselecteerd.',
+    recentSearches: 'Recente zoekopdrachten',
+    browse: 'Bladeren',
+    emptyHint: 'Wat wil je horen?',
+    genres: 'Genres',
   },
   nowPlaying: {
     tooltip: 'Wie luistert er?',
@@ -341,6 +345,7 @@ export const nlTranslation = {
     languageZh: 'Chinees',
     languageNb: 'Noors',
     languageRu: 'Russisch',
+    languageRu2: 'Russisch 2',
     font: 'Lettertype',
     theme: 'Thema',
     appearance: 'Weergave',

@@ -178,6 +178,34 @@
   margin-bottom: var(--space-4);
 }
 
+.section-title-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  text-decoration: none;
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.section-title-link:hover {
+  color: var(--accent);
+}
+
+.section-title-chevron {
+  opacity: 0.45;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.section-title-link:hover .section-title-chevron {
+  opacity: 1;
+  transform: translateX(2px);
+}
+
 /* ─ Album Card ─ */
 .album-card {
   cursor: pointer;
@@ -5650,3 +5678,533 @@
   opacity: 0.85;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE COMPONENT OVERRIDES  (< 800px)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── Album / Artist Grid — fewer columns ─── */
+.app-shell[data-mobile] .album-grid-wrap {
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: var(--space-3);
+}
+
+/* Horizontal scroll rows — smaller cards */
+.app-shell[data-mobile] .album-grid .album-card,
+.app-shell[data-mobile] .album-grid .artist-card {
+  flex: 0 0 130px;
+}
+
+.app-shell[data-mobile] .album-card-more {
+  flex: 0 0 130px;
+}
+
+/* ─── Hero — mobile ─── */
+.app-shell[data-mobile] .hero,
+.app-shell[data-mobile] .hero-placeholder {
+  height: 290px;
+}
+
+/* Stronger bottom gradient so white text stays readable without a cover */
+.app-shell[data-mobile] .hero-overlay {
+  background:
+    linear-gradient(to top,
+      rgba(0, 0, 0, 0.90) 0%,
+      rgba(0, 0, 0, 0.55) 45%,
+      rgba(0, 0, 0, 0.22) 100%);
+}
+
+.app-shell[data-mobile] .hero-content {
+  padding: var(--space-4);
+  padding-bottom: 44px; /* keep buttons clear of the pagination dots */
+  gap: 0;
+  align-items: flex-end;
+}
+
+.app-shell[data-mobile] .hero-title {
+  font-size: clamp(17px, 5vw, 22px);
+  max-width: 100%;
+}
+
+/* Circular action buttons on mobile hero */
+.hero-actions-mobile {
+  display: flex;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+/* ─── Live Search — full width ─── */
+.app-shell[data-mobile] .live-search {
+  max-width: none;
+  min-width: 0;
+}
+
+/* ─── Section / Page titles ─── */
+.app-shell[data-mobile] .section-title,
+.app-shell[data-mobile] .page-title,
+.app-shell[data-mobile] .section-title-link {
+  font-size: 17px;
+}
+
+/* ─── Album Detail Header — stack vertically on mobile ─── */
+.app-shell[data-mobile] .album-detail-header-inner {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.app-shell[data-mobile] .album-detail-cover {
+  width: 160px;
+  height: 160px;
+}
+
+/* ─── Page padding ─── */
+.app-shell[data-mobile] .content-body {
+  padding: var(--space-4) !important;
+}
+
+/* ─── Hide desktop search on mobile ─── */
+.app-shell[data-mobile] .live-search {
+  display: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE SEARCH OVERLAY
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes mobile-search-in {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.mobile-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  animation: mobile-search-in 0.2s ease both;
+}
+
+/* ─── Search bar ─── */
+.mobile-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px 10px 12px;
+  flex-shrink: 0;
+}
+
+.mobile-search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  background: var(--bg-card);
+  border-radius: 20px;
+  padding: 0 12px;
+  height: 40px;
+  min-width: 0;
+}
+
+.mobile-search-icon {
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mobile-search-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+.mobile-search-input {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-size: 17px;
+  color: var(--text-primary);
+  caret-color: var(--accent);
+  min-width: 0;
+}
+
+.mobile-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.mobile-search-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.mobile-search-clear {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--text-muted);
+  border: none;
+  color: var(--bg-app);
+  cursor: pointer;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
+
+.mobile-search-cancel {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 4px 0;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+/* ─── Results area ─── */
+.mobile-search-results {
+  flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mobile-search-noresults {
+  padding: 48px 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+/* ─── Empty state ─── */
+.mobile-search-empty-state {
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-search-hint {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 48px 20px 32px;
+}
+
+.mobile-search-hint-icon {
+  color: var(--text-muted);
+  opacity: 0.25;
+}
+
+.mobile-search-hint-text {
+  font-size: 16px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ─── Category chips ─── */
+.mobile-search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 16px 16px;
+}
+
+.mobile-search-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 7px 14px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.mobile-search-chip:active,
+.mobile-search-chip:hover {
+  background: var(--bg-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ─── Recent searches ─── */
+.mobile-search-recent-remove {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 6px;
+  cursor: pointer;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.mobile-search-recent-remove:hover {
+  opacity: 1;
+}
+
+/* ─── Section headers ─── */
+.mobile-search-section {
+  padding-bottom: 8px;
+}
+
+.mobile-search-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 16px 16px 6px;
+}
+
+/* ─── Result items ─── */
+.mobile-search-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition-fast);
+}
+
+.mobile-search-item:active {
+  background: var(--bg-hover);
+}
+
+.mobile-search-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.mobile-search-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  background: var(--bg-card);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.mobile-search-avatar--circle {
+  border-radius: 50%;
+}
+
+.mobile-search-item-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+
+.mobile-search-item-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-search-item-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mobile-search-item-chevron {
+  color: var(--text-muted);
+  opacity: 0.4;
+  flex-shrink: 0;
+}
+
+/* ─── Album Header — Mobile Actions ─── */
+.album-detail-actions-mobile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 10px;
+  width: 100%;
+}
+
+.album-actions-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 20px;
+}
+
+.album-actions-row--secondary {
+  gap: 16px;
+}
+
+/* Base icon button */
+.album-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--transition-fast), color var(--transition-fast), filter var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.album-icon-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text-primary);
+}
+
+/* Play — largest, accent fill */
+.album-icon-btn--play {
+  width: 54px;
+  height: 54px;
+  background: var(--accent);
+  border-color: transparent;
+  color: #fff;
+}
+
+.album-icon-btn--play:hover {
+  background: var(--accent);
+  filter: brightness(1.12);
+  color: #fff;
+}
+
+/* Queue — medium, slightly more prominent than secondary */
+.album-icon-btn--queue {
+  width: 46px;
+  height: 46px;
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: var(--text-primary);
+}
+
+/* Secondary (smaller) icon buttons */
+.album-icon-btn--sm {
+  width: 36px;
+  height: 36px;
+}
+
+.album-icon-btn.is-starred {
+  color: var(--color-star-active, var(--accent));
+}
+
+.album-icon-btn.album-icon-btn--active {
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* Download progress inline */
+.album-icon-btn.album-icon-btn--progress {
+  width: auto;
+  border-radius: 21px;
+  padding: 0 12px;
+  gap: 6px;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.album-icon-btn-pct {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Album Tracklist — Mobile ─── */
+.tracklist-mobile {
+  padding: 0 var(--space-4) var(--space-6);
+}
+
+.tracklist-mobile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  border-radius: 6px;
+}
+
+.tracklist-mobile-row:last-child {
+  border-bottom: none;
+}
+
+.tracklist-mobile-row.active .tracklist-mobile-title {
+  color: var(--accent);
+}
+
+.tracklist-mobile-row.context-active {
+  background: var(--bg-hover);
+}
+
+.tracklist-mobile-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1;
+}
+
+.tracklist-mobile-num {
+  font-size: 12px;
+  color: var(--text-muted);
+  min-width: 18px;
+  text-align: right;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.tracklist-mobile-eq {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  min-width: 18px;
+}
+
+.tracklist-mobile-title {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tracklist-mobile-duration {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}

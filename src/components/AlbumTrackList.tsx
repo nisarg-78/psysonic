@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { useDragDrop } from '../contexts/DragDropContext';
 import { AddToPlaylistSubmenu } from './ContextMenu';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);
@@ -96,6 +97,7 @@ export default function AlbumTrackList({
 }: AlbumTrackListProps) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [contextMenuSongId, setContextMenuSongId] = useState<string | null>(null);
   const contextMenuOpen = usePlayerStore(s => s.contextMenu.isOpen);
   const psyDrag = useDragDrop();
@@ -292,6 +294,50 @@ export default function AlbumTrackList({
         return null;
     }
   };
+
+  // ── Mobile tracklist ─────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className="tracklist-mobile">
+        {discNums.map(discNum => (
+          <div key={discNum}>
+            {isMultiDisc && (
+              <div className="disc-header">
+                <span className="disc-icon">💿</span> CD {discNum}
+              </div>
+            )}
+            {discs.get(discNum)!.map(song => {
+              const isActive = currentTrack?.id === song.id;
+              return (
+                <div
+                  key={song.id}
+                  className={`tracklist-mobile-row${isActive ? ' active' : ''}${contextMenuSongId === song.id ? ' context-active' : ''}`}
+                  onClick={() => onPlaySong(song)}
+                  onContextMenu={e => {
+                    e.preventDefault();
+                    setContextMenuSongId(song.id);
+                    onContextMenu(e.clientX, e.clientY, songToTrack(song), 'album-song');
+                  }}
+                >
+                  <div className="tracklist-mobile-main">
+                    {isActive && isPlaying ? (
+                      <span className="tracklist-mobile-eq">
+                        <div className="eq-bars"><span className="eq-bar" /><span className="eq-bar" /><span className="eq-bar" /></div>
+                      </span>
+                    ) : (
+                      <span className="tracklist-mobile-num">{song.track ?? ''}</span>
+                    )}
+                    <span className="tracklist-mobile-title">{song.title}</span>
+                  </div>
+                  <span className="tracklist-mobile-duration">{formatDuration(song.duration)}</span>
+                </div>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="tracklist" ref={tracklistRef}>

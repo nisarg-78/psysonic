@@ -65,6 +65,10 @@ export const enTranslation = {
     advancedEmpty: 'Enter a search term or select a filter to begin.',
     advancedNoResults: 'No results found.',
     advancedGenreNote: 'Songs are randomly selected from this genre.',
+    recentSearches: 'Recent Searches',
+    browse: 'Browse',
+    emptyHint: 'What do you want to hear?',
+    genres: 'Genres',
   },
   nowPlaying: {
     tooltip: 'Who is listening?',
@@ -341,6 +345,7 @@ export const enTranslation = {
     languageZh: 'Chinese',
     languageNb: 'Norwegian',
     languageRu: 'Russian',
+    languageRu2: 'Russian 2',
     font: 'Font',
     theme: 'Theme',
     appearance: 'Appearance',

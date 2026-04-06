@@ -3,7 +3,8 @@ import Hero from '../components/Hero';
 import AlbumRow from '../components/AlbumRow';
 import { getAlbumList, getArtists, SubsonicAlbum, SubsonicArtist } from '../api/subsonic';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { ChevronRight } from 'lucide-react';
 import { useHomeStore } from '../store/homeStore';
 
 export default function Home() {
@@ -76,6 +77,7 @@ export default function Home() {
             {isVisible('recent') && (
               <AlbumRow
                 title={t('home.recent')}
+                titleLink="/albums"
                 albums={recent}
                 onLoadMore={() => loadMore('newest', recent, setRecent)}
                 moreText={t('home.loadMore')}
@@ -84,6 +86,7 @@ export default function Home() {
             {isVisible('discover') && (
               <AlbumRow
                 title={t('home.discover')}
+                titleLink="/random-albums"
                 albums={random}
                 onLoadMore={() => loadMore('random', random, setRandom)}
                 moreText={t('home.discoverMore')}
@@ -92,7 +95,9 @@ export default function Home() {
             {isVisible('discoverArtists') && randomArtists.length > 0 && (
               <section className="album-row-section">
                 <div className="album-row-header">
-                  <h2 className="section-title" style={{ marginBottom: 0 }}>{t('home.discoverArtists')}</h2>
+                  <NavLink to="/artists" className="section-title-link" style={{ marginBottom: 0 }}>
+                    {t('home.discoverArtists')}<ChevronRight size={18} className="section-title-chevron" />
+                  </NavLink>
                 </div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                   {randomArtists.map(a => (
@@ -118,6 +123,7 @@ export default function Home() {
             {isVisible('starred') && starred.length > 0 && (
               <AlbumRow
                 title={t('home.starred')}
+                titleLink="/favorites"
                 albums={starred}
                 onLoadMore={() => loadMore('starred', starred, setStarred)}
                 moreText={t('home.loadMore')}

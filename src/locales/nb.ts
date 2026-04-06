@@ -65,6 +65,10 @@ export const nbTranslation = {
     advancedEmpty: 'Skriv inn et søkeord eller velg ett filter for å begynne.',
     advancedNoResults: 'Ingen resultater funnet.',
     advancedGenreNote: 'Sanger er tilfeldig valgt fra denne sjangeren.',
+    recentSearches: 'Siste søk',
+    browse: 'Utforsk',
+    emptyHint: 'Hva vil du høre?',
+    genres: 'Sjangre',
   },
   nowPlaying: {
     tooltip: 'Hvem lytter?',
@@ -341,6 +345,7 @@ export const nbTranslation = {
     languageZh: 'Kinesisk',
     languageNb: 'Norsk',
     languageRu: 'Russisk',
+    languageRu2: 'Russisk 2',
     font: 'Skrifttype',
     theme: 'Tema',
     appearance: 'Utseende',

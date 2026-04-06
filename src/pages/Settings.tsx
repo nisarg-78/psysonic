@@ -82,6 +82,20 @@ const CONTRIBUTORS = [
       'Norwegian (Bokmål) translation (PR #101)',
     ],
   },
+  {
+    github: 'cucadmuh',
+    since: '1.33.0',
+    contributions: [
+      'Russian translation & i18n locale split (PR #106)',
+    ],
+  },
+  {
+    github: 'kilyabin',
+    since: '1.34.0',
+    contributions: [
+      'Alternative Russian translation (PR #107)',
+    ],
+  },
 ] as const;
 
 const SPECIAL_THANKS = [
@@ -805,13 +819,14 @@ export default function Settings() {
                   value={i18n.language}
                   onChange={v => i18n.changeLanguage(v)}
                   options={[
-                    { value: 'nl', label: t('settings.languageNl') },
                     { value: 'en', label: t('settings.languageEn') },
-                    { value: 'fr', label: t('settings.languageFr') },
                     { value: 'de', label: t('settings.languageDe') },
-                    { value: 'zh', label: t('settings.languageZh') },
+                    { value: 'fr', label: t('settings.languageFr') },
+                    { value: 'nl', label: t('settings.languageNl') },
                     { value: 'nb', label: t('settings.languageNb') },
                     { value: 'ru', label: t('settings.languageRu') },
+                    { value: 'ru2', label: t('settings.languageRu2') },
+                    { value: 'zh', label: t('settings.languageZh') },
                   ]}
                 />
               </div>

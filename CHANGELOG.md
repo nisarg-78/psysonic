@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.34.0] - 2026-04-06
+
+### Added
+
+- **Mobile UI — Early Preview** ⚠️ — After multiple requests from the community, an initial mobile layout is shipping in this release. **This is a very early work-in-progress** — expect rough edges, missing features, and layouts that still need a lot of polish. Feedback is very welcome! Join the [Discord](https://discord.gg/ckVPGPMS) to share your thoughts.
+  - Sidebar and queue panel are hidden on mobile; a sticky **Bottom Navigation Bar** replaces them with quick access to Mainstage, Albums, Now Playing, and Search.
+  - **Mobile Player View** (`/now-playing`) — Full-screen ambient player with dynamic album-art-based background color, large cover art, track metadata line, and playback controls.
+  - **Mobile Search Overlay** — Full-screen search with recent search history, category chips (Albums, Artists, Genres), and grouped results.
+  - **Mobile Album Header** — Compact two-row icon button layout (Play + Queue primary, Favorite + Bio + Download + Offline secondary).
+  - **Mobile Tracklist** — Simplified track rows; disc headers preserved for multi-disc albums.
+  - **Mobile Hero / Carousel** — Blurred-background-only layout with circular Play + Queue buttons.
+- **Russian 2 translation** *(PR [#107](https://github.com/Psychotoxical/psysonic/pull/107) by [@kilyabin](https://github.com/kilyabin))*: A second Russian translation alongside the existing one from [@cucadmuh](https://github.com/cucadmuh) *(PR [#106](https://github.com/Psychotoxical/psysonic/pull/106))*. Both are selectable in Settings → Appearance as **Russian** and **Russian 2**. Since the maintainer neither speaks nor reads Russian, **community feedback is essential here** — please vote on the [Discord](https://discord.gg/ckVPGPMS) or via GitHub which translation feels more natural so we can retire the weaker one in a future release.
+- **Clickable Mainstage section headers** — "Zuletzt hinzugefügt", "Entdecken", "Künstler entdecken", and "Persönliche Favoriten" now navigate to their respective pages on click, with a `ChevronRight` indicator and accent-color hover effect.
+
+### Fixed
+
+- **macOS network playback** *(Issue [#108](https://github.com/Psychotoxical/psysonic/issues/108))*: Added `com.apple.security.network.client` to `Entitlements.plist` and disabled the app sandbox for unsigned/ad-hoc builds. Without this, macOS silently blocked outbound TCP connections from the Rust audio engine, causing the player to skip through every track without playing anything.
+- **Auto-updater** *(under observation)*: Fixed an incorrect signature in the auto-generated `latest.json` — the CI was writing the public key as the signature value. The updater now receives a correctly signed manifest. **Note:** Due to OS-level restrictions on macOS (Gatekeeper) and Windows (SmartScreen) for unsigned apps, it is not yet certain whether the in-app updater will reliably work on these platforms. Manual installation from the Releases page remains the safe fallback.
+
+### Changed
+
+- All new i18n keys added to all 8 languages (EN, DE, FR, NL, ZH, NB, RU, RU2).
+
 ## [1.33.0] - 2026-04-06
 
 ### Added

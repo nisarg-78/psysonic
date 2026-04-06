@@ -8,6 +8,9 @@ import { PanelRight, PanelRightClose } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import Sidebar from './components/Sidebar';
 import PlayerBar from './components/PlayerBar';
+import BottomNav from './components/BottomNav';
+import MobilePlayerView from './components/MobilePlayerView';
+import { useIsMobile } from './hooks/useIsMobile';
 import LiveSearch from './components/LiveSearch';
 import NowPlayingDropdown from './components/NowPlayingDropdown';
 import QueuePanel from './components/QueuePanel';
@@ -66,6 +69,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
 
 function AppShell() {
   const { t } = useTranslation();
+  const isMobile = useIsMobile();
   const isFullscreenOpen = usePlayerStore(s => s.isFullscreenOpen);
   const toggleFullscreen = usePlayerStore(s => s.toggleFullscreen);
   const isQueueVisible = usePlayerStore(s => s.isQueueVisible);
@@ -219,19 +223,25 @@ function AppShell() {
     };
   }, []);
 
+  const isMobilePlayer = isMobile && location.pathname === '/now-playing';
+
   return (
     <div 
       className="app-shell"
+      data-mobile={isMobile || undefined}
+      data-mobile-player={isMobilePlayer || undefined}
       style={{
-        '--sidebar-width': isSidebarCollapsed ? '72px' : 'clamp(200px, 15vw, 220px)',
-        '--queue-width': isQueueVisible ? `${queueWidth}px` : '0px'
+        '--sidebar-width': isMobile ? '0px' : (isSidebarCollapsed ? '72px' : 'clamp(200px, 15vw, 220px)'),
+        '--queue-width': isMobile ? '0px' : (isQueueVisible ? `${queueWidth}px` : '0px')
       } as React.CSSProperties}
       onContextMenu={e => e.preventDefault()}
     >
-      <Sidebar
-        isCollapsed={isSidebarCollapsed}
-        toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-      />
+      {!isMobile && (
+        <Sidebar
+          isCollapsed={isSidebarCollapsed}
+          toggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+      )}
       <main className="main-content">
         <header className="content-header">
           <LiveSearch />
@@ -273,7 +283,7 @@ function AppShell() {
             <Route path="/search" element={<SearchResults />} />
             <Route path="/search/advanced" element={<AdvancedSearch />} />
             <Route path="/statistics" element={<Statistics />} />
-            <Route path="/now-playing" element={<NowPlayingPage />} />
+            <Route path="/now-playing" element={isMobile ? <MobilePlayerView /> : <NowPlayingPage />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/help" element={<Help />} />
             <Route path="/offline" element={<OfflineLibrary />} />
@@ -285,16 +295,19 @@ function AppShell() {
           </Routes>
         </div>
       </main>
-      <div 
-        className="resizer resizer-queue" 
-        onMouseDown={(e) => {
-          e.preventDefault();
-          setIsDraggingQueue(true);
-        }}
-        style={{ display: isQueueVisible ? 'block' : 'none' }}
-      />
-      <QueuePanel />
-      <PlayerBar />
+      {!isMobile && (
+        <div 
+          className="resizer resizer-queue" 
+          onMouseDown={(e) => {
+            e.preventDefault();
+            setIsDraggingQueue(true);
+          }}
+          style={{ display: isQueueVisible ? 'block' : 'none' }}
+        />
+      )}
+      {!isMobile && <QueuePanel />}
+      {isMobile && !isMobilePlayer && <BottomNav />}
+      {!isMobilePlayer && <PlayerBar />}
       {isFullscreenOpen && (
         <FullscreenPlayer onClose={toggleFullscreen} />
       )}

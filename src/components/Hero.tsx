@@ -6,6 +6,7 @@ import CachedImage, { useCachedUrl } from './CachedImage';
 import { usePlayerStore, songToTrack } from '../store/playerStore';
 import { useTranslation } from 'react-i18next';
 import { playAlbum } from '../utils/playAlbum';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 const INTERVAL_MS = 10000;
 
@@ -50,6 +51,7 @@ interface HeroProps {
 export default function Hero({ albums: albumsProp }: HeroProps = {}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const [albums, setAlbums] = useState<SubsonicAlbum[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -120,7 +122,7 @@ export default function Hero({ albums: albumsProp }: HeroProps = {}) {
 
       {/* key causes re-mount → animate-fade-in triggers on each album change */}
       <div className="hero-content animate-fade-in" key={album.id}>
-        {coverRawUrl && (
+        {coverRawUrl && !isMobile && (
           <CachedImage
             className="hero-cover"
             src={coverRawUrl}
@@ -135,36 +137,62 @@ export default function Hero({ albums: albumsProp }: HeroProps = {}) {
           <div className="hero-meta">
             {album.year && <span className="badge">{album.year}</span>}
             {album.genre && <span className="badge">{album.genre}</span>}
-            {album.songCount && <span className="badge">{album.songCount} Tracks</span>}
-            {albumFormats[album.id] && <span className="badge">{albumFormats[album.id]}</span>}
+            {!isMobile && album.songCount && <span className="badge">{album.songCount} Tracks</span>}
+            {!isMobile && albumFormats[album.id] && <span className="badge">{albumFormats[album.id]}</span>}
           </div>
-          <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-            <button
-              className="hero-play-btn"
-              id="hero-play-btn"
-              onClick={e => { e.stopPropagation(); playAlbum(album.id); }}
-              aria-label={`${t('hero.playAlbum')} ${album.name}`}
-            >
-              <Play size={18} fill="currentColor" />
-              {t('hero.playAlbum')}
-            </button>
-            <button
-              className="btn btn-surface"
-            onClick={async (e) => {
-                 e.stopPropagation();
-                 try {
-                   const albumData = await getAlbum(album.id);
-                   const tracks = albumData.songs.map(songToTrack);
-                   usePlayerStore.getState().enqueue(tracks);
-                 } catch (_) { }
-               }}
-              style={{ padding: '0 1.5rem', fontWeight: 600, fontSize: '0.95rem' }}
-              data-tooltip={t('hero.enqueueTooltip')}
-            >
-              <ListPlus size={18} />
-              {t('hero.enqueue')}
-            </button>
-          </div>
+          {isMobile ? (
+            <div className="hero-actions-mobile" onClick={e => e.stopPropagation()}>
+              <button
+                className="album-icon-btn album-icon-btn--play"
+                onClick={e => { e.stopPropagation(); playAlbum(album.id); }}
+                aria-label={`${t('hero.playAlbum')} ${album.name}`}
+              >
+                <Play size={22} fill="currentColor" />
+              </button>
+              <button
+                className="album-icon-btn album-icon-btn--queue"
+                onClick={async e => {
+                  e.stopPropagation();
+                  try {
+                    const albumData = await getAlbum(album.id);
+                    usePlayerStore.getState().enqueue(albumData.songs.map(songToTrack));
+                  } catch (_) {}
+                }}
+                aria-label={t('hero.enqueue')}
+                data-tooltip={t('hero.enqueueTooltip')}
+              >
+                <ListPlus size={20} />
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
+              <button
+                className="hero-play-btn"
+                id="hero-play-btn"
+                onClick={e => { e.stopPropagation(); playAlbum(album.id); }}
+                aria-label={`${t('hero.playAlbum')} ${album.name}`}
+              >
+                <Play size={18} fill="currentColor" />
+                {t('hero.playAlbum')}
+              </button>
+              <button
+                className="btn btn-surface"
+                onClick={async (e) => {
+                  e.stopPropagation();
+                  try {
+                    const albumData = await getAlbum(album.id);
+                    const tracks = albumData.songs.map(songToTrack);
+                    usePlayerStore.getState().enqueue(tracks);
+                  } catch (_) {}
+                }}
+                style={{ padding: '0 1.5rem', fontWeight: 600, fontSize: '0.95rem' }}
+                data-tooltip={t('hero.enqueueTooltip')}
+              >
+                <ListPlus size={18} />
+                {t('hero.enqueue')}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

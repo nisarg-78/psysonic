@@ -65,6 +65,10 @@ export const zhTranslation = {
     advancedEmpty: '请输入搜索词或选择过滤器。',
     advancedNoResults: '未找到结果。',
     advancedGenreNote: '歌曲从该流派中随机选取。',
+    recentSearches: '最近搜索',
+    browse: '浏览',
+    emptyHint: '你想听什么？',
+    genres: '流派',
   },
   nowPlaying: {
     tooltip: '谁正在收听？',
@@ -337,6 +341,7 @@ export const zhTranslation = {
     languageZh: '中文',
     languageNb: '挪威',
     languageRu: '俄语',
+    languageRu2: '俄语 2',
     font: '字体',
     theme: '主题',
     appearance: '外观',

@@ -66,6 +66,10 @@ export const ruTranslation = {
     advancedEmpty: 'Введите запрос или выберите фильтр.',
     advancedNoResults: 'Ничего не найдено.',
     advancedGenreNote: 'Треки выбираются случайно в рамках жанра.',
+    recentSearches: 'Недавние запросы',
+    browse: 'Обзор',
+    emptyHint: 'Что хочешь послушать?',
+    genres: 'Жанры',
   },
   nowPlaying: {
     tooltip: 'Кто сейчас слушает?',
@@ -355,6 +359,7 @@ export const ruTranslation = {
     languageZh: 'Китайский',
     languageNb: 'Норвежский',
     languageRu: 'Русский',
+    languageRu2: 'Русский 2',
     font: 'Шрифт',
     theme: 'Тема',
     appearance: 'Оформление',

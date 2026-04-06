@@ -1203,3 +1203,634 @@
   color: inherit;
   opacity: 0.8;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE LAYOUT  (< 800px)
+   Controller: data-mobile attribute set by useIsMobile hook
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ─── BottomNav Component ─── */
+.bottom-nav {
+  grid-area: bottomnav;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  background: var(--bg-sidebar);
+  border-top: 1px solid var(--border-subtle);
+  height: 56px;
+  z-index: 100;
+  flex-shrink: 0;
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  transition: color var(--transition-fast);
+  position: relative;
+}
+
+.bottom-nav-item:hover {
+  color: var(--text-secondary);
+}
+
+.bottom-nav-item.active {
+  color: var(--accent);
+}
+
+.bottom-nav-item.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 0 0 var(--radius-full) var(--radius-full);
+}
+
+.bottom-nav-item svg {
+  opacity: 0.65;
+  transition: opacity var(--transition-fast);
+}
+
+.bottom-nav-item.active svg,
+.bottom-nav-item:hover svg {
+  opacity: 1;
+}
+
+.bottom-nav-icon-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.bottom-nav-np-dot {
+  position: absolute;
+  top: -2px;
+  right: -5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: np-dot-pulse 1.8s ease-in-out infinite;
+}
+
+.bottom-nav-label {
+  line-height: 1;
+}
+
+/* ─── Grid Overrides ─── */
+.app-shell[data-mobile] {
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr auto auto;
+  grid-template-areas:
+    "main"
+    "bottomnav"
+    "player";
+  width: 100vw;
+  max-width: 100%;
+}
+
+/* Hide the sidebar collapse button on mobile */
+.app-shell[data-mobile] .collapse-btn {
+  display: none;
+}
+
+/* ─── Content Header — Mobile ─── */
+.app-shell[data-mobile] .content-header {
+  padding: 0 var(--space-4);
+  height: 52px;
+  gap: var(--space-3);
+}
+
+/* Hide queue toggle on mobile */
+.app-shell[data-mobile] .queue-toggle-btn {
+  display: none;
+}
+
+/* ─── Player Bar — Mobile ─── */
+.app-shell[data-mobile] .player-bar {
+  gap: var(--space-3);
+  padding: 0 var(--space-3);
+  height: 64px;
+}
+
+.app-shell[data-mobile] .player-track-info {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.app-shell[data-mobile] .player-waveform-section,
+.app-shell[data-mobile] .player-volume-section,
+.app-shell[data-mobile] .player-eq-btn,
+.app-shell[data-mobile] .player-bar > .player-btn.player-btn-sm:not(.player-star-btn):not(.player-love-btn) {
+  display: none;
+}
+
+.app-shell[data-mobile] .player-buttons {
+  gap: var(--space-1);
+  flex-shrink: 0;
+}
+
+.app-shell[data-mobile] .player-btn-primary {
+  width: 40px;
+  height: 40px;
+}
+
+.app-shell[data-mobile] .player-album-art,
+.app-shell[data-mobile] .player-album-art-placeholder {
+  width: 44px;
+  height: 44px;
+}
+
+/* Hide star + last.fm love buttons in mobile player to save space */
+.app-shell[data-mobile] .player-star-btn,
+.app-shell[data-mobile] .player-love-btn {
+  display: none;
+}
+
+/* ─── App Updater Toast — Mobile ─── */
+.app-shell[data-mobile] .app-updater-toast {
+  bottom: calc(64px + 56px + 12px);
+}
+
+/* ─── Mobile Player Takeover ─── */
+/* When the mobile player is active, the app-shell becomes a single full-screen
+   area with no BottomNav or PlayerBar — just the main content. */
+.app-shell[data-mobile-player] {
+  grid-template-rows: 1fr;
+  grid-template-areas: "main";
+}
+
+.app-shell[data-mobile-player] .content-header {
+  display: none;
+}
+
+.app-shell[data-mobile-player] .content-body {
+  padding: 0 !important;
+  overflow: hidden !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE PLAYER VIEW  (MobilePlayerView.tsx)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mp-view {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  background: var(--bg-app); /* fallback; overridden by dynamic gradient via inline style */
+  overflow: hidden !important;
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE/Edge */
+  padding: 0 20px env(safe-area-inset-bottom, 0);
+  box-sizing: border-box;
+  transition: background 0.8s ease;
+  z-index: 10;
+}
+
+.mp-view::-webkit-scrollbar {
+  display: none; /* Chrome, Safari, Tauri/WebKitGTK */
+}
+
+/* ─── Header ─── */
+.mp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  flex-shrink: 0;
+}
+
+.mp-header-title {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.mp-back {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.mp-back:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ─── Cover Art ─── */
+.mp-cover-wrap {
+  flex: 0 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mp-cover {
+  width: min(calc(100vw - 28px), 55vh);
+  max-width: 440px;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 14px;
+  box-shadow: 0 16px 52px rgba(0, 0, 0, 0.7), 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+.mp-cover-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+  color: var(--text-muted);
+}
+
+/* ─── Track Metadata ─── */
+.mp-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 8px 0 4px;
+  flex-shrink: 0;
+}
+
+.mp-meta-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.mp-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.mp-artist {
+  font-size: 15px;
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.mp-track-info {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+  letter-spacing: 0.01em;
+}
+
+.mp-heart {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.mp-heart:hover {
+  transform: scale(1.12);
+}
+
+.mp-heart.active {
+  color: var(--color-star-active, var(--accent));
+}
+
+/* ─── Scrubber ─── */
+.mp-scrubber-wrap {
+  padding: 12px 0 2px;
+  flex-shrink: 0;
+}
+
+.mp-scrubber {
+  position: relative;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: none;
+}
+
+.mp-scrubber-bg {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--ctp-surface2, rgba(255,255,255,0.12));
+}
+
+.mp-scrubber-fill {
+  position: absolute;
+  left: 0;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--accent);
+  transition: width 0.08s linear;
+}
+
+.mp-scrubber-thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s ease;
+}
+
+.mp-scrubber:active .mp-scrubber-thumb {
+  transform: translate(-50%, -50%) scale(1.3);
+}
+
+.mp-scrubber-times {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Transport Controls ─── */
+.mp-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  padding: 8px 0 4px;
+  flex-shrink: 0;
+}
+
+.mp-ctrl-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color var(--transition-fast), transform var(--transition-fast);
+}
+
+.mp-ctrl-btn:hover {
+  color: var(--text-primary);
+  transform: scale(1.08);
+}
+
+.mp-ctrl-sm {
+  width: 44px;
+  height: 44px;
+  color: var(--text-muted);
+}
+
+.mp-ctrl-play {
+  width: 64px;
+  height: 64px;
+  background: var(--accent);
+  color: var(--ctp-crust);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+}
+
+.mp-ctrl-play:hover {
+  color: var(--ctp-crust);
+  filter: brightness(1.1);
+  transform: scale(1.06);
+  box-shadow: 0 6px 28px rgba(0, 0, 0, 0.4), var(--shadow-glow);
+}
+
+/* ─── Empty state ─── */
+.mp-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  color: var(--text-muted);
+  font-size: 15px;
+}
+
+/* ─── Utility Footer ─── */
+.mp-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  padding: 8px 0 max(12px, env(safe-area-inset-bottom, 12px));
+  flex-shrink: 0;
+}
+
+.mp-footer-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  transition: color var(--transition-fast), background var(--transition-fast);
+  min-height: 44px;
+}
+
+.mp-footer-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   MOBILE QUEUE / LYRICS DRAWER
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+@keyframes mq-slide-up {
+  from { transform: translateY(100%); }
+  to   { transform: translateY(0); }
+}
+
+@keyframes mq-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.mq-drawer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  animation: mq-fade-in 0.2s ease both;
+}
+
+.mq-drawer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 90vh;
+  z-index: 501;
+  background: var(--bg-sidebar);
+  border-radius: 18px 18px 0 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: mq-slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  box-shadow: 0 -8px 40px rgba(0, 0, 0, 0.4);
+}
+
+.mq-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.mq-drawer-header h3 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.mq-drawer-count {
+  font-size: 13px;
+  color: var(--accent);
+  flex: 1;
+}
+
+.mq-drawer-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--bg-hover);
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.mq-drawer-close:hover {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.mq-drawer-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.mq-drawer-empty {
+  padding: var(--space-6);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Lyrics drawer — fill entire drawer */
+.mq-drawer-lyrics .mq-drawer-list {
+  padding: 0;
+}
+
+/* ── Queue Item ── */
+.mq-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: background var(--transition-fast);
+  min-height: 44px;
+}
+
+.mq-item:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.mq-item.active {
+  background: var(--accent-dim);
+  color: var(--accent);
+}
+
+.mq-item-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mq-item-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mq-item-artist {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.mq-item.active .mq-item-artist {
+  color: inherit;
+  opacity: 0.7;
+}
+
+.mq-item-dur {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: var(--space-3);
+}
+
+.mq-item.active .mq-item-dur {
+  color: inherit;
+  opacity: 0.7;
+}
