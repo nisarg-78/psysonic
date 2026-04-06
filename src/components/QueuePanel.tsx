@@ -163,9 +163,9 @@ interface QueueHeaderProps {
   t: TFunction;
 }
 function QueueHeader({ queue, queueIndex, showRemainingTime, setShowRemainingTime, activePlaylist, t }: QueueHeaderProps) {
-  if (queue.length === 0) return null;
-
   const currentTime = usePlayerStore((s) => s.currentTime);
+
+  if (queue.length === 0) return null;
   const totalSecs = queue.reduce((acc: number, t: any) => acc + (t.duration || 0), 0);
   const remainingSecs = Math.max(0, (queue[queueIndex]?.duration ?? 0) - currentTime + queue.slice(queueIndex + 1).reduce((acc: number, t: any) => acc + (t.duration || 0), 0));
 
@@ -333,7 +333,7 @@ export default function QueuePanel() {
     if (!queueListRef.current || queueIndex < 0) return;
     if (activeTab !== 'queue') return;
     const songs = queueListRef.current!.querySelectorAll<HTMLElement>('[data-queue-idx]');
-    const nextSong = songs[queueIndex + 1];
+    const nextSong = songs[queueIndex];
     if (!nextSong) return;
     nextSong.scrollIntoView({ block: "start", behavior: "instant" });
   }, [currentTrack, activeTab]);       
