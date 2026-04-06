@@ -1,10 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, getAlbum, search, SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicArtistInfo, buildCoverArtUrl, coverArtCacheKey, star, unstar } from '../api/subsonic';
+import { getArtist, getArtistInfo, getTopSongs, getSimilarSongs2, getAlbum, search, SubsonicArtist, SubsonicAlbum, SubsonicSong, SubsonicArtistInfo, buildCoverArtUrl, coverArtCacheKey, star, unstar, uploadArtistImage } from '../api/subsonic';
 import AlbumCard from '../components/AlbumCard';
 import CachedImage from '../components/CachedImage';
 import CoverLightbox from '../components/CoverLightbox';
-import { ArrowLeft, Users, ExternalLink, Heart, Play, Shuffle, Radio, HardDriveDownload, Check } from 'lucide-react';
+import { ArrowLeft, Users, ExternalLink, Heart, Play, Shuffle, Radio, HardDriveDownload, Check, Camera, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-shell';
 import { usePlayerStore, songToTrack } from '../store/playerStore';
 import { useOfflineStore } from '../store/offlineStore';
@@ -12,6 +12,8 @@ import { useAuthStore } from '../store/authStore';
 import { useTranslation } from 'react-i18next';
 import { lastfmGetSimilarArtists, lastfmIsConfigured } from '../api/lastfm';
 import LastfmIcon from '../components/LastfmIcon';
+import { invalidateCoverArt } from '../utils/imageCache';
+import { showToast } from '../utils/toast';
 
 function formatDuration(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -55,6 +57,10 @@ export default function ArtistDetail() {
   const [similarLoading, setSimilarLoading] = useState(false);
   const [featuredLoading, setFeaturedLoading] = useState(false);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [bioExpanded, setBioExpanded] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [coverRevision, setCoverRevision] = useState(0);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const playTrack = usePlayerStore(state => state.playTrack);
   const enqueue = usePlayerStore(state => state.enqueue);
@@ -233,6 +239,32 @@ export default function ArtistDetail() {
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !artist) return;
+    setUploading(true);
+    try {
+      await uploadArtistImage(artist.id, file);
+      const coverId = artist.coverArt || artist.id;
+      await invalidateCoverArt(coverId);
+      // Also invalidate with bare artist.id in case coverArt differs
+      if (artist.coverArt && artist.coverArt !== artist.id) {
+        await invalidateCoverArt(artist.id);
+      }
+      setCoverRevision(r => r + 1);
+      showToast(t('artistDetail.uploadImage'));
+    } catch (err) {
+      showToast(
+        typeof err === 'string' ? err : err instanceof Error ? err.message : t('artistDetail.uploadImageError'),
+        4000,
+        'error',
+      );
+    } finally {
+      setUploading(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="content-body" style={{ display: 'flex', justifyContent: 'center', padding: '4rem' }}>
@@ -273,7 +305,7 @@ export default function ArtistDetail() {
       )}
 
       <div className="artist-detail-header">
-        <div className="artist-detail-avatar">
+        <div className="artist-detail-avatar" style={{ position: 'relative' }}>
           {coverId ? (
             <button
               className="artist-detail-avatar-btn"
@@ -281,6 +313,7 @@ export default function ArtistDetail() {
               aria-label={`${artist.name} Bild vergrößern`}
             >
               <CachedImage
+                key={coverRevision}
                 src={buildCoverArtUrl(coverId, 300)}
                 cacheKey={coverArtCacheKey(coverId, 300)}
                 alt={artist.name}
@@ -291,6 +324,22 @@ export default function ArtistDetail() {
           ) : (
             <Users size={64} color="var(--text-muted)" />
           )}
+          {/* Upload overlay */}
+          <div
+            className="artist-avatar-upload-overlay"
+            onClick={e => { e.stopPropagation(); imageInputRef.current?.click(); }}
+          >
+            {uploading
+              ? <Loader2 size={22} className="spin-slow" />
+              : <Camera size={22} />}
+          </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: 'none' }}
+            onChange={handleImageUpload}
+          />
         </div>
 
         <div className="artist-detail-meta">
@@ -373,11 +422,29 @@ export default function ArtistDetail() {
 
       {/* Biography — sanitized HTML from server */}
       {info?.biography && (
-        <div className="artist-bio-section">
-          <div
-            className="artist-bio-text"
-            dangerouslySetInnerHTML={{ __html: sanitizeHtml(info.biography) }}
-          />
+        <div className="np-info-card artist-bio-card">
+          <div className="np-card-header">
+            <h3 className="np-card-title">{t('nowPlaying.aboutArtist')}</h3>
+          </div>
+          <div className="np-artist-bio-row">
+            {(info.largeImageUrl || coverId) && (
+              <img
+                src={info.largeImageUrl || buildCoverArtUrl(coverId, 80)}
+                alt={artist.name}
+                className="np-artist-thumb"
+                onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              />
+            )}
+            <div className="np-bio-wrap">
+              <div
+                className={`np-bio-text${bioExpanded ? ' expanded' : ''}`}
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(info.biography) }}
+              />
+              <button className="np-bio-toggle" onClick={() => setBioExpanded(v => !v)}>
+                {bioExpanded ? t('nowPlaying.showLess') : t('nowPlaying.readMore')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

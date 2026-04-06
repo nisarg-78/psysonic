@@ -2022,6 +2022,32 @@
   filter: brightness(1.08);
 }
 
+/* Camera overlay for uploading a new artist image */
+.artist-avatar-upload-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 44px;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 150ms ease;
+  border-bottom-left-radius: 50%;
+  border-bottom-right-radius: 50%;
+  z-index: 2;
+}
+.artist-detail-avatar:hover .artist-avatar-upload-overlay {
+  opacity: 1;
+}
+.artist-avatar-upload-overlay:hover {
+  background: rgba(0, 0, 0, 0.7);
+}
+
 .artist-detail-meta {
   flex: 1;
   min-width: 0;
@@ -2056,21 +2082,9 @@
 }
 
 /* Bio section */
-.artist-bio-section {
-  margin-bottom: 0.5rem;
-}
-
-.artist-bio-text {
-  font-size: 14px;
-  line-height: 1.75;
-  color: var(--text-secondary);
-  max-width: 100%;
-  user-select: text;
-}
-
-.artist-bio-text a {
-  color: var(--accent);
-  text-decoration: underline;
+/* Artist Detail bio — reuses np-info-card + np-artist-bio-row */
+.artist-bio-card {
+  margin-bottom: 2rem;
 }
 
 
@@ -2481,6 +2495,14 @@
   color: var(--text-secondary);
   text-align: center;
   margin: 0;
+}
+
+.lyrics-source {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  margin: 8px 0 4px;
+  opacity: 0.6;
 }
 
 
@@ -2924,23 +2946,21 @@
   align-items: center;
   justify-content: center;
   pointer-events: none;
-  border-radius: 12px;
-  overflow: hidden;
+  /* No overflow:hidden / border-radius — object-fit:contain never overflows, and
+     rounding the wrap visually clips wide images. */
   transform: translateZ(0);
-  /* Fade left edge to blend into the dark mesh */
+  /* Thin left-edge fade to blend into the scrim — keep image fully visible */
   -webkit-mask-image: linear-gradient(
     to right,
     transparent 0%,
-    rgba(0, 0, 0, 0.45) 18%,
-    rgba(0, 0, 0, 0.85) 40%,
-    #000 60%
+    rgba(0, 0, 0, 0.6) 6%,
+    #000 16%
   );
   mask-image: linear-gradient(
     to right,
     transparent 0%,
-    rgba(0, 0, 0, 0.45) 18%,
-    rgba(0, 0, 0, 0.85) 40%,
-    #000 60%
+    rgba(0, 0, 0, 0.6) 6%,
+    #000 16%
   );
 }
 
@@ -3005,7 +3025,7 @@
   position: absolute;
   bottom: 72px;
   left: clamp(28px, 4vw, 64px);
-  z-index: 3;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -3014,6 +3034,7 @@
 
 /* Album art — small, rounded, glowing */
 .fs-art-wrap {
+  position: relative;           /* stacking context for crossfade layers */
   width: clamp(120px, 10vw, 180px);
   height: clamp(120px, 10vw, 180px);
   border-radius: 12px;
@@ -3025,16 +3046,19 @@
     0 0 28px var(--accent-glow, var(--accent));
 }
 
+/* Each layer is absolutely stacked — layers crossfade via opacity */
 .fs-art {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  display: block;
+  transition: opacity 300ms ease;
 }
 
 .fs-art-placeholder {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
   background: rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
@@ -3211,6 +3235,90 @@
   -webkit-appearance: none;
   appearance: none;
 }
+
+/* ── Idle-fade — only the close button hides; cluster + seekbar always visible ── */
+.fs-player[data-idle="true"] .fs-close {
+  opacity: 0.05;
+  pointer-events: none;
+  transition: opacity 900ms ease;
+}
+
+.fs-player[data-idle="false"] .fs-close {
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 200ms ease;
+}
+
+/* ── Lyrics overlay — upper-left quadrant, strictly 5 lines tall ── */
+/*    Slot = 3.6vh  →  5 × 3.6vh = 18vh. JS reads window.innerHeight * 0.036.  */
+.fs-lyrics-overlay {
+  position: absolute;
+  top: 15vh;          /* pushed down into the quadrant, clear of close button */
+  left: clamp(28px, 4vw, 64px);
+  right: 52%;         /* stay out of portrait area */
+  height: 18vh;       /* exactly 5 × 3.6vh — never grows, never overlaps cluster */
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+
+  /* Fade first and last slot (each 3.6/18 = 20% of container) */
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 20%,
+    #000 80%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    #000 20%,
+    #000 80%,
+    transparent 100%
+  );
+}
+
+/* Synced rail — smooth slide, no abrupt jumps */
+.fs-lyrics-rail {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  will-change: transform;
+  transition: transform 500ms ease-out;
+}
+
+/* Each lyric slot is exactly 3.6vh — matches JS window.innerHeight * 0.036 */
+.fs-lyric-line {
+  height: 3.6vh;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: 2.2vh;
+  color: rgba(255, 255, 255, 0.22);
+  font-weight: 400;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: color 280ms ease, font-weight 280ms ease, text-shadow 280ms ease;
+  user-select: none;
+}
+
+.fs-lyric-line:hover {
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.fs-lyric-line.fsl-past {
+  color: rgba(255, 255, 255, 0.1);
+}
+
+/* Active: emphasis via weight + glow only, height stays 44px */
+.fs-lyric-line.fsl-active {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.95);
+  text-shadow: 0 0 28px var(--accent-glow, var(--accent)), 0 1px 8px rgba(0, 0, 0, 0.6);
+}
+
 
 /* Chat */
 .chat-popup {
@@ -3969,6 +4077,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-right: 1.5rem;
 }
 
 .np-bio-text {
@@ -3984,8 +4093,25 @@
 
 .np-bio-text.expanded {
   display: block;
-  overflow: visible;
   -webkit-line-clamp: unset;
+  overflow-y: auto;
+  max-height: 300px;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ctp-teal) transparent;
+}
+
+.np-bio-text.expanded::-webkit-scrollbar {
+  width: 4px;
+}
+
+.np-bio-text.expanded::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.np-bio-text.expanded::-webkit-scrollbar-thumb {
+  background: var(--ctp-teal);
+  border-radius: 2px;
 }
 
 .np-bio-text a { color: var(--accent); }
@@ -4001,6 +4127,19 @@
   opacity: 0.8;
 }
 .np-bio-toggle:hover { opacity: 1; }
+
+.app-shell[data-mobile] .np-artist-bio-row {
+  flex-direction: column;
+}
+
+.app-shell[data-mobile] .np-artist-thumb {
+  width: 56px;
+  height: 56px;
+}
+
+.app-shell[data-mobile] .np-bio-wrap {
+  padding-right: 0;
+}
 
 /* ── Album tracklist ── */
 .np-album-tracklist {

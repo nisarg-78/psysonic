@@ -1,12 +1,17 @@
 import React, { useCallback, useEffect, useState, useRef, memo, useMemo } from 'react';
 import {
   Play, Pause, SkipBack, SkipForward,
-  ChevronDown, Repeat, Repeat1, Square, Music, Heart
+  ChevronDown, Repeat, Repeat1, Square, Music, Heart, MicVocal
 } from 'lucide-react';
 import { usePlayerStore } from '../store/playerStore';
 import { buildCoverArtUrl, coverArtCacheKey, getArtistInfo, star, unstar } from '../api/subsonic';
-import CachedImage, { useCachedUrl } from './CachedImage';
+import { useCachedUrl } from './CachedImage';
+import { getCachedUrl } from '../utils/imageCache';
 import { useTranslation } from 'react-i18next';
+import { useLyrics } from '../hooks/useLyrics';
+import { useAuthStore } from '../store/authStore';
+import type { LrcLine } from '../api/lrclib';
+import type { Track } from '../store/playerStore';
 
 function formatTime(seconds: number): string {
   if (!seconds || isNaN(seconds)) return '0:00';
@@ -15,12 +20,136 @@ function formatTime(seconds: number): string {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+// ─── Fullscreen lyrics overlay ────────────────────────────────────────────────
+// Slot height = 3.6vh = window.innerHeight * 0.036 — must match CSS height: 3.6vh.
+// railY = (2 - activeIdx) * slotH centers slot `activeIdx` in a 5-slot window:
+//   activeIdx=0 → railY=+2×slotH  (line 0 at slot 2)
+//   activeIdx=2 → railY=0         (line 2 at center)
+//   activeIdx=5 → railY=-3×slotH  (line 5 at slot 2)
+
+const FsLyrics = memo(function FsLyrics({ currentTrack }: { currentTrack: Track | null }) {
+  const { syncedLines, loading } = useLyrics(currentTrack);
+  const lines = syncedLines as LrcLine[] | null;
+  const hasSynced = lines !== null && lines.length > 0;
+
+  // Keep a ref so the zustand selector can read lines without closing over
+  // a changing variable — avoids re-creating the selector on every render.
+  const linesRef = useRef<LrcLine[]>([]);
+  linesRef.current = hasSynced ? lines! : [];
+
+  // Selector returns the active line INDEX — zustand only re-renders when it
+  // actually changes, dropping us from ~10 Hz to ~0.2 Hz re-renders.
+  const activeIdx = usePlayerStore(s => {
+    const ls = linesRef.current;
+    if (ls.length === 0) return -1;
+    return ls.reduce((acc, line, i) => s.currentTime >= line.time ? i : acc, -1);
+  });
+
+  const duration = usePlayerStore(s => s.currentTrack?.duration ?? 0);
+  const seek     = usePlayerStore(s => s.seek);
+
+  // Cache slotH — avoids forcing a layout read (window.innerHeight) on every render.
+  const slotH = useRef(window.innerHeight * 0.036);
+  useEffect(() => {
+    const onResize = () => { slotH.current = window.innerHeight * 0.036; };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Event delegation — one handler for all lyric lines instead of N closures per tick.
+  const handleLineClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest<HTMLElement>('[data-time]');
+    if (!target || duration <= 0) return;
+    seek(parseFloat(target.dataset.time!) / duration);
+  }, [duration, seek]);
+
+  if (!currentTrack || loading || !hasSynced) return null;
+
+  const railY = (2 - Math.max(0, activeIdx)) * slotH.current;
+
+  return (
+    <div className="fs-lyrics-overlay" aria-hidden="true">
+      <div
+        className="fs-lyrics-rail"
+        style={{ transform: `translateY(${railY}px)` }}
+        onClick={handleLineClick}
+      >
+        {lines!.map((line, i) => (
+          <div
+            key={i}
+            className={`fs-lyric-line${i === activeIdx ? ' fsl-active' : i < activeIdx ? ' fsl-past' : ''}`}
+            data-time={line.time}
+          >
+            {line.text || '\u00A0'}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+});
+
+// ─── Album art box — crossfades layers so old art stays visible while new loads ─
+// Uses 300px thumbnails (portrait fallback uses 500px separately).
+//
+// Why onLoad instead of new Image() preload:
+//   React batches setLayers(add invisible) + rAF setLayers(make visible) into one
+//   commit, so the browser never sees opacity:0 and the CSS transition never fires.
+//   Using the DOM img's own onLoad guarantees the element was painted at opacity:0
+//   before we flip it to 1.
+const FsArt = memo(function FsArt({ fetchUrl, cacheKey }: { fetchUrl: string; cacheKey: string }) {
+  // true = show raw fetchUrl immediately as fallback while blob resolves.
+  // PlayerBar uses 128px; FS player uses 300px — different cache keys, no warm hit.
+  // Showing the URL directly avoids the multi-second blank wait.
+  const blobUrl = useCachedUrl(fetchUrl, cacheKey, true);
+
+  const [layers, setLayers] = useState<Array<{ src: string; id: number; vis: boolean }>>([]);
+  const counter = useRef(0);
+  const cleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Add a new invisible layer whenever the blob URL changes.
+  useEffect(() => {
+    if (!blobUrl) return;
+    const id = ++counter.current;
+    setLayers(prev => [...prev, { src: blobUrl, id, vis: false }]);
+  }, [blobUrl]);
+
+  // Called by the DOM <img> once it has painted at opacity:0 — now safe to transition.
+  // Cancel any pending cleanup timer so a stale setTimeout from a previous layer
+  // cannot remove the layer we are making visible right now.
+  const handleLoad = useCallback((id: number) => {
+    if (cleanupTimer.current) clearTimeout(cleanupTimer.current);
+    setLayers(prev => prev.map(l => ({ ...l, vis: l.id === id })));
+    cleanupTimer.current = setTimeout(() => setLayers(prev => prev.filter(l => l.id === id)), 400);
+  }, []);
+
+  if (layers.length === 0) {
+    return <div className="fs-art fs-art-placeholder"><Music size={40} /></div>;
+  }
+
+  return (
+    <>
+      {layers.map(l => (
+        <img
+          key={l.id}
+          src={l.src}
+          className="fs-art"
+          style={{ opacity: l.vis ? 1 : 0 }}
+          onLoad={() => handleLoad(l.id)}
+          alt=""
+          decoding="async"
+        />
+      ))}
+    </>
+  );
+});
+
 // ─── Artist portrait — right half, crossfades on track change ─────────────────
 const FsPortrait = memo(function FsPortrait({ url }: { url: string }) {
   const [layers, setLayers] = useState<Array<{ url: string; id: number; visible: boolean }>>(() =>
     url ? [{ url, id: 0, visible: true }] : []
   );
   const counterRef = useRef(1);
+  const cleanupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (!url) return;
@@ -32,8 +161,9 @@ const FsPortrait = memo(function FsPortrait({ url }: { url: string }) {
       setLayers(prev => [...prev, { url, id, visible: false }]);
       requestAnimationFrame(() => {
         if (cancelled) return;
+        if (cleanupTimer.current) clearTimeout(cleanupTimer.current);
         setLayers(prev => prev.map(l => ({ ...l, visible: l.id === id })));
-        setTimeout(() => {
+        cleanupTimer.current = setTimeout(() => {
           if (!cancelled) setLayers(prev => prev.filter(l => l.id === id));
         }, 1000);
       });
@@ -122,12 +252,14 @@ export default function FullscreenPlayer({ onClose }: FullscreenPlayerProps) {
   const previous           = usePlayerStore(s => s.previous);
   const stop               = usePlayerStore(s => s.stop);
   const toggleRepeat       = usePlayerStore(s => s.toggleRepeat);
-  const starredOverrides   = usePlayerStore(s => s.starredOverrides);
   const setStarredOverride = usePlayerStore(s => s.setStarredOverride);
-
-  const isStarred = currentTrack
-    ? (currentTrack.id in starredOverrides ? starredOverrides[currentTrack.id] : !!currentTrack.starred)
-    : false;
+  // Derive isStarred inside the selector so we only re-render when the boolean
+  // actually flips — not when any unrelated track's star status changes.
+  const isStarred = usePlayerStore(s => {
+    const track = s.currentTrack;
+    if (!track) return false;
+    return track.id in s.starredOverrides ? s.starredOverrides[track.id] : !!track.starred;
+  });
 
   const toggleStar = useCallback(async () => {
     if (!currentTrack) return;
@@ -144,6 +276,9 @@ export default function FullscreenPlayer({ onClose }: FullscreenPlayerProps) {
   const duration = currentTrack?.duration ?? 0;
 
   // buildCoverArtUrl generates a new salt on every call — must be memoized.
+  // 300px for the small art box; 500px for the right-side portrait fallback.
+  const artUrl  = useMemo(() => currentTrack?.coverArt ? buildCoverArtUrl(currentTrack.coverArt, 300) : '', [currentTrack?.coverArt]);
+  const artKey  = useMemo(() => currentTrack?.coverArt ? coverArtCacheKey(currentTrack.coverArt, 300) : '', [currentTrack?.coverArt]);
   const coverUrl = useMemo(() => currentTrack?.coverArt ? buildCoverArtUrl(currentTrack.coverArt, 500) : '', [currentTrack?.coverArt]);
   const coverKey = useMemo(() => currentTrack?.coverArt ? coverArtCacheKey(currentTrack.coverArt, 500) : '', [currentTrack?.coverArt]);
   // `false` = no fetchUrl fallback — prevents double crossfade (fetchUrl → blobUrl).
@@ -163,22 +298,71 @@ export default function FullscreenPlayer({ onClose }: FullscreenPlayerProps) {
   }, [currentTrack?.artistId]);
 
   const portraitUrl = artistBgUrl || resolvedCoverUrl;
+  const showFullscreenLyrics = useAuthStore(s => s.showFullscreenLyrics);
+
+  // Pre-fetch next track's 300px cover into the IndexedDB cache.
+  // Selector returns only the coverArt id, so it only re-runs on actual changes.
+  const nextCoverArt = usePlayerStore(s => {
+    const q = s.queue;
+    const idx = s.queueIndex;
+    return (idx >= 0 && idx + 1 < q.length) ? (q[idx + 1]?.coverArt ?? null) : null;
+  });
+  useEffect(() => {
+    if (!nextCoverArt) return;
+    const url = buildCoverArtUrl(nextCoverArt, 300);
+    const key = coverArtCacheKey(nextCoverArt, 300);
+    getCachedUrl(url, key).catch(() => {});
+  }, [nextCoverArt]);
+
+  // Idle-fade system — hides controls after 3 s of inactivity
+  const [isIdle, setIsIdle] = useState(false);
+  const idleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const resetIdle = useCallback(() => {
+    setIsIdle(false);
+    if (idleTimer.current) clearTimeout(idleTimer.current);
+    idleTimer.current = setTimeout(() => setIsIdle(true), 3000);
+  }, []);
+
+  // Throttled wrapper for mousemove — avoids clearing/setting timeouts on every pixel.
+  const lastMoveTime = useRef(0);
+  const handleMouseMove = useCallback(() => {
+    const now = Date.now();
+    if (now - lastMoveTime.current < 200) return;
+    lastMoveTime.current = now;
+    resetIdle();
+  }, [resetIdle]);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    resetIdle();
+    return () => { if (idleTimer.current) clearTimeout(idleTimer.current); };
+  }, [resetIdle]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      resetIdle();
+      if (e.key === 'Escape') onClose();
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, resetIdle]);
 
-  const metaParts = [
+  const metaParts = useMemo(() => [
     currentTrack?.album,
     currentTrack?.year?.toString(),
     currentTrack?.suffix?.toUpperCase(),
     currentTrack?.bitRate ? `${currentTrack.bitRate} kbps` : '',
-  ].filter(Boolean);
+  ].filter(Boolean), [currentTrack]);
 
   return (
-    <div className="fs-player" role="dialog" aria-modal="true" aria-label={t('player.fullscreen')}>
+    <div
+      className="fs-player"
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('player.fullscreen')}
+      data-idle={isIdle}
+      onMouseMove={handleMouseMove}
+    >
 
       {/* Layer 0 — animated dark mesh gradient (real divs = will-change possible) */}
       <div className="fs-mesh-bg" aria-hidden="true">
@@ -197,21 +381,15 @@ export default function FullscreenPlayer({ onClose }: FullscreenPlayerProps) {
         <ChevronDown size={28} />
       </button>
 
+      {/* Lyrics overlay — upper-left quadrant, above cluster */}
+      {showFullscreenLyrics && <FsLyrics currentTrack={currentTrack} />}
+
       {/* Layer 3 — info cluster, bottom-left */}
       <div className="fs-cluster">
 
         {/* Album art */}
         <div className="fs-art-wrap">
-          {coverUrl ? (
-            <CachedImage
-              src={coverUrl}
-              cacheKey={coverKey}
-              alt={`${currentTrack?.album} Cover`}
-              className="fs-art"
-            />
-          ) : (
-            <div className="fs-art fs-art-placeholder"><Music size={40} /></div>
-          )}
+          <FsArt fetchUrl={artUrl} cacheKey={artKey} />
         </div>
 
         {/* Artist — massive statement */}
@@ -262,6 +440,15 @@ export default function FullscreenPlayer({ onClose }: FullscreenPlayerProps) {
               <Heart size={14} fill={isStarred ? 'currentColor' : 'none'} />
             </button>
           )}
+          <button
+            className="fs-btn fs-btn-sm"
+            onClick={() => useAuthStore.getState().setShowFullscreenLyrics(!showFullscreenLyrics)}
+            aria-label={t('player.fsLyricsToggle')}
+            data-tooltip={t('player.fsLyricsToggle')}
+            style={{ color: showFullscreenLyrics ? 'var(--accent)' : 'rgba(255,255,255,0.35)' }}
+          >
+            <MicVocal size={14} />
+          </button>
         </div>
 
       </div>

@@ -42,6 +42,8 @@ interface AuthState {
   minimizeToTray: boolean;
   discordRichPresence: boolean;
   nowPlayingEnabled: boolean;
+  lyricsServerFirst: boolean;
+  showFullscreenLyrics: boolean;
   showChangelogOnUpdate: boolean;
   lastSeenChangelogVersion: string;
 
@@ -82,6 +84,8 @@ interface AuthState {
   setMinimizeToTray: (v: boolean) => void;
   setDiscordRichPresence: (v: boolean) => void;
   setNowPlayingEnabled: (v: boolean) => void;
+  setLyricsServerFirst: (v: boolean) => void;
+  setShowFullscreenLyrics: (v: boolean) => void;
   setShowChangelogOnUpdate: (v: boolean) => void;
   setLastSeenChangelogVersion: (v: string) => void;
   logout: () => void;
@@ -123,6 +127,8 @@ export const useAuthStore = create<AuthState>()(
       minimizeToTray: false,
       discordRichPresence: false,
       nowPlayingEnabled: false,
+      lyricsServerFirst: true,
+      showFullscreenLyrics: true,
       showChangelogOnUpdate: true,
       lastSeenChangelogVersion: '',
       isLoggedIn: false,
@@ -196,6 +202,8 @@ export const useAuthStore = create<AuthState>()(
       setMinimizeToTray: (v) => set({ minimizeToTray: v }),
       setDiscordRichPresence: (v) => set({ discordRichPresence: v }),
       setNowPlayingEnabled: (v) => set({ nowPlayingEnabled: v }),
+      setLyricsServerFirst: (v: boolean) => set({ lyricsServerFirst: v }),
+      setShowFullscreenLyrics: (v: boolean) => set({ showFullscreenLyrics: v }),
       setShowChangelogOnUpdate: (v) => set({ showChangelogOnUpdate: v }),
       setLastSeenChangelogVersion: (v) => set({ lastSeenChangelogVersion: v }),
 

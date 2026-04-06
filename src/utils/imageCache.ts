@@ -191,6 +191,16 @@ export async function invalidateCacheKey(cacheKey: string): Promise<void> {
   }
 }
 
+/**
+ * Invalidates all cached sizes for a given cover art entity (artist, radio, playlist, album).
+ * Call this after uploading or deleting a cover image so the UI re-fetches from the server.
+ */
+export async function invalidateCoverArt(entityId: string): Promise<void> {
+  const serverId = useAuthStore.getState().getActiveServer()?.id ?? '_';
+  const sizes = [40, 64, 128, 200, 256, 300, 500, 2000];
+  await Promise.all(sizes.map(size => invalidateCacheKey(`${serverId}:cover:${entityId}:${size}`)));
+}
+
 /** Clears all entries from IndexedDB and revokes all in-memory object URLs. */
 export async function clearImageCache(): Promise<void> {
   for (const url of objectUrlCache.values()) {

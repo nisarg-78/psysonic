@@ -11,6 +11,7 @@ import {
 } from '../api/subsonic';
 import { usePlayerStore } from '../store/playerStore';
 import CachedImage from '../components/CachedImage';
+import { invalidateCoverArt } from '../utils/imageCache';
 import CustomSelect from '../components/CustomSelect';
 import { useTranslation } from 'react-i18next';
 import { open } from '@tauri-apps/plugin-shell';
@@ -141,6 +142,7 @@ export default function InternetRadio() {
         if (created) {
           try {
             await uploadRadioCoverArt(created.id, opts.coverFile);
+            await invalidateCoverArt(`ra-${created.id}`);
           } catch (err) {
             showToast(typeof err === 'string' ? err : err instanceof Error ? err.message : 'Cover upload failed', 4000, 'error');
           }
@@ -163,11 +165,13 @@ export default function InternetRadio() {
       if (opts.coverFile) {
         try {
           await uploadRadioCoverArt(id, opts.coverFile);
+          await invalidateCoverArt(`ra-${id}`);
         } catch (err) {
           showToast(typeof err === 'string' ? err : err instanceof Error ? err.message : 'Cover upload failed', 4000, 'error');
         }
       } else if (opts.coverRemoved) {
         await deleteRadioCoverArt(id).catch(() => {});
+        await invalidateCoverArt(`ra-${id}`);
       }
       await reload();
     }
