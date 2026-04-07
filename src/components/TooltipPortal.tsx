@@ -35,13 +35,20 @@ export default function TooltipPortal() {
       const target = (e.target as HTMLElement).closest('[data-tooltip]');
       if (!target) setTooltip(null);
     };
+    /** Clicking a tooltip anchor (e.g. opening a dropdown) keeps the cursor inside the element, so mouseout never runs — hide immediately. */
+    const onDown = (e: MouseEvent) => {
+      const t = (e.target as HTMLElement).closest('[data-tooltip]');
+      if (t) setTooltip(null);
+    };
     document.addEventListener('mouseover', onOver);
     document.addEventListener('mouseout', onOut);
     document.addEventListener('mousemove', onMove, { passive: true });
+    document.addEventListener('mousedown', onDown, true);
     return () => {
       document.removeEventListener('mouseover', onOver);
       document.removeEventListener('mouseout', onOut);
       document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mousedown', onDown, true);
     };
   }, []);
 

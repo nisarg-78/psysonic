@@ -21,6 +21,8 @@ export const enTranslation = {
     genres: 'Genres',
     playlists: 'Playlists',
     radio: 'Internet Radio',
+    libraryScope: 'Library scope',
+    allLibraries: 'All libraries',
   },
   home: {
     hero: 'Featured',

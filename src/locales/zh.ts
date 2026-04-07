@@ -20,6 +20,8 @@ export const zhTranslation = {
     genres: '流派',
     playlists: '播放列表',
     radio: '网络电台',
+    libraryScope: '资料库范围',
+    allLibraries: '所有资料库',
   },
   home: {
     hero: '精选',

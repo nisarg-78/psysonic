@@ -20,6 +20,8 @@ export const deTranslation = {
     genres: 'Genres',
     playlists: 'Playlists',
     radio: 'Internetradio',
+    libraryScope: 'Bibliotheksumfang',
+    allLibraries: 'Alle Bibliotheken',
   },
   home: {
     hero: 'Featured',

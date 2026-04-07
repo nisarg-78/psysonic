@@ -21,6 +21,8 @@ export const ruTranslation = {
     genres: 'Жанры',
     playlists: 'Плейлисты',
     radio: 'Онлайн-радио',
+    libraryScope: 'Область медиатеки',
+    allLibraries: 'Все библиотеки',
   },
   home: {
     hero: 'Подборка',

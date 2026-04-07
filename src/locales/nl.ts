@@ -20,6 +20,8 @@ export const nlTranslation = {
     genres: 'Genres',
     playlists: 'Playlists',
     radio: 'Internetradio',
+    libraryScope: 'Bibliotheekbereik',
+    allLibraries: 'Alle bibliotheken',
   },
   home: {
     hero: 'Uitgelicht',

@@ -20,6 +20,8 @@ export const nbTranslation = {
     genres: 'Sjangere',
     playlists: 'Spillelister',
     radio: 'Internettradio',
+    libraryScope: 'Biblioteksomfang',
+    allLibraries: 'Alle biblioteker',
   },
   home: {
     hero: 'Utvalgt',

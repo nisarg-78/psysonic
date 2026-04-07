@@ -20,6 +20,8 @@ export const frTranslation = {
     genres: 'Genres',
     playlists: 'Playlists',
     radio: 'Radio Internet',
+    libraryScope: 'Portée de la bibliothèque',
+    allLibraries: 'Toutes les bibliothèques',
   },
   home: {
     hero: 'En vedette',
